@@ -24,6 +24,13 @@ function getClient(): SupabaseClient {
 
   client = createClient(url, serviceRoleKey, {
     auth: { persistSession: false },
+    // Force every request to bypass Next.js's fetch cache. Without this,
+    // Next caches Supabase reads (e.g. the dashboard word count) and keeps
+    // serving stale numbers after the underlying data changes.
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, { ...init, cache: "no-store" }),
+    },
   });
   return client;
 }
