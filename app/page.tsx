@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { supabase, type Direction } from "@/lib/supabase";
+import { bucketByStage, type ProgressCounts } from "@/lib/progress";
 
 export const dynamic = "force-dynamic";
 
@@ -20,27 +21,94 @@ async function getStats() {
     return count ?? 0;
   }
 
-  async function mastered(direction: Direction) {
-    const { count } = await supabase
-      .from("card_progress")
-      .select("id", { count: "exact", head: true })
-      .eq("direction", direction)
-      .eq("mastered", true);
-    return count ?? 0;
-  }
+  // All cards, for per-word stage bucketing (analytics).
+  const { data: allCards } = await supabase
+    .from("card_progress")
+    .select("word_id, mastered, interval_days, repetitions");
 
-  const [dueEsEn, dueEnEs, mEsEn, mEnEs] = await Promise.all([
+  const [dueEsEn, dueEnEs] = await Promise.all([
     due("es_to_en"),
     due("en_to_es"),
-    mastered("es_to_en"),
-    mastered("en_to_es"),
   ]);
 
   return {
     totalWords: totalWords ?? 0,
     due: { es_to_en: dueEsEn, en_to_es: dueEnEs },
-    mastered: { es_to_en: mEsEn, en_to_es: mEnEs },
+    progress: bucketByStage(allCards ?? []),
   };
+}
+
+function ProgressSection({ p }: { p: ProgressCounts }) {
+  const stages = [
+    {
+      key: "new" as const,
+      emoji: "🌱",
+      label: "Just starting",
+      count: p.new,
+      bar: "bg-sunny",
+      text: "text-sunny-dark",
+    },
+    {
+      key: "learning" as const,
+      emoji: "📚",
+      label: "Learning",
+      count: p.learning,
+      bar: "bg-grape",
+      text: "text-grape-dark",
+    },
+    {
+      key: "mastered" as const,
+      emoji: "🏆",
+      label: "Mastered",
+      count: p.mastered,
+      bar: "bg-teal",
+      text: "text-teal-dark",
+    },
+  ];
+
+  return (
+    <div className="mt-4 rounded-3xl bg-white p-6 shadow-pop">
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-display text-lg font-600" style={{ fontWeight: 600 }}>
+          Your progress
+        </h2>
+        <span className="text-sm font-bold text-ink/40">
+          {p.total} word{p.total === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {/* Stacked segmented bar */}
+      <div className="mt-4 flex h-4 w-full overflow-hidden rounded-full bg-ink/5">
+        {p.total > 0 &&
+          stages.map((s) =>
+            s.count > 0 ? (
+              <div
+                key={s.key}
+                className={`${s.bar} h-full transition-all`}
+                style={{ width: `${(s.count / p.total) * 100}%` }}
+                title={`${s.label}: ${s.count}`}
+              />
+            ) : null
+          )}
+      </div>
+
+      {/* Legend / counts */}
+      <div className="mt-5 grid grid-cols-3 gap-3">
+        {stages.map((s) => (
+          <div key={s.key} className="text-center">
+            <div className="text-2xl">{s.emoji}</div>
+            <div
+              className={`mt-1 font-display text-3xl font-700 ${s.text}`}
+              style={{ fontWeight: 700 }}
+            >
+              {s.count}
+            </div>
+            <div className="text-xs font-bold text-ink/50">{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function StudyCard({
@@ -49,14 +117,12 @@ function StudyCard({
   label,
   color,
   due,
-  mastered,
 }: {
   direction: Direction;
   flag: string;
   label: string;
   color: "tang" | "teal";
   due: number;
-  mastered: number;
 }) {
   const styles = {
     tang: {
@@ -83,9 +149,6 @@ function StudyCard({
           {due}
         </span>
         <span className="text-sm font-bold opacity-90">due now</span>
-      </div>
-      <div className="mt-1 text-xs font-semibold opacity-80">
-        ✓ {mastered} mastered
       </div>
       <div
         className={`mt-5 inline-block rounded-full ${styles.btn} px-5 py-2 text-sm font-800 shadow-pop-sm transition group-hover:-translate-y-0.5`}
@@ -118,7 +181,6 @@ export default async function DashboardPage() {
           label="Spanish → English"
           color="tang"
           due={stats.due.es_to_en}
-          mastered={stats.mastered.es_to_en}
         />
         <StudyCard
           direction="en_to_es"
@@ -126,9 +188,10 @@ export default async function DashboardPage() {
           label="English → Spanish"
           color="teal"
           due={stats.due.en_to_es}
-          mastered={stats.mastered.en_to_es}
         />
       </div>
+
+      <ProgressSection p={stats.progress} />
 
       <div className="mt-6">
         <Link
