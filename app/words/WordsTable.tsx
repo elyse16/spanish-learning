@@ -35,11 +35,54 @@ function StatusBadge({
   );
 }
 
+const editInputCls =
+  "w-full rounded-lg border-2 border-tang/40 bg-white px-2 py-1.5 outline-none focus:border-tang";
+
 export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) {
   const [rows, setRows] = useState(initialRows);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editSpanish, setEditSpanish] = useState("");
+  const [editEnglish, setEditEnglish] = useState("");
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  function startEdit(row: WordRow) {
+    setConfirmingId(null);
+    setError("");
+    setEditingId(row.id);
+    setEditSpanish(row.spanish);
+    setEditEnglish(row.english);
+  }
+
+  async function saveEdit(row: WordRow) {
+    const spanish = editSpanish.trim();
+    const english = editEnglish.trim();
+    if (!spanish || !english) {
+      setError("Both Spanish and English are required.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/words/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spanish, english }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      setRows((prev) =>
+        prev.map((r) => (r.id === row.id ? { ...r, spanish, english } : r))
+      );
+      setEditingId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function performDelete(row: WordRow) {
     setConfirmingId(null);
@@ -83,58 +126,115 @@ export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) 
                 <th className="px-4 py-3">English</th>
                 <th className="px-4 py-3">ES→EN</th>
                 <th className="px-4 py-3">EN→ES</th>
-                <th className="w-24 px-4 py-3"></th>
+                <th className="w-28 px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
+                const isEditing = editingId === r.id;
                 const isConfirming = confirmingId === r.id;
                 const isDeleting = deleting.has(r.id);
                 return (
                   <tr key={r.id} className="border-b border-ink/5 last:border-0">
-                    <td className="px-4 py-3 font-bold text-ink">{r.spanish}</td>
-                    <td className="px-4 py-3 text-ink/60">{r.english}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge s={r.status.es_to_en} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge s={r.status.en_to_es} />
-                    </td>
-                    <td className="px-4 py-3">
-                      {isConfirming ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <span className="mr-1 text-xs font-bold text-ink/50">Delete?</span>
-                          <button
-                            onClick={() => performDelete(r)}
-                            className="rounded-full bg-tang px-2.5 py-1 text-xs font-800 text-white"
-                            style={{ fontWeight: 800 }}
-                            aria-label={`Confirm delete ${r.spanish}`}
-                          >
-                            Yes
-                          </button>
-                          <button
-                            onClick={() => setConfirmingId(null)}
-                            className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-800 text-ink/60"
-                            style={{ fontWeight: 800 }}
-                            aria-label="Cancel delete"
-                          >
-                            No
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-right">
-                          <button
-                            onClick={() => setConfirmingId(r.id)}
-                            disabled={isDeleting}
-                            className="rounded-full px-2 py-1 text-ink/30 transition hover:bg-tang/10 hover:text-tang disabled:opacity-40"
-                            aria-label={`Delete ${r.spanish}`}
-                            title="Delete word"
-                          >
-                            {isDeleting ? "…" : "🗑️"}
-                          </button>
-                        </div>
-                      )}
-                    </td>
+                    {isEditing ? (
+                      <>
+                        <td className="px-3 py-2">
+                          <input
+                            value={editSpanish}
+                            onChange={(e) => setEditSpanish(e.target.value)}
+                            className={`${editInputCls} font-bold text-ink`}
+                            aria-label="Edit Spanish"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            value={editEnglish}
+                            onChange={(e) => setEditEnglish(e.target.value)}
+                            className={`${editInputCls} text-ink`}
+                            aria-label="Edit English"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge s={r.status.es_to_en} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge s={r.status.en_to_es} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => saveEdit(r)}
+                              disabled={saving}
+                              className="rounded-full bg-teal px-3 py-1 text-xs font-800 text-white disabled:opacity-50"
+                              style={{ fontWeight: 800 }}
+                            >
+                              {saving ? "…" : "Save"}
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="rounded-full bg-ink/5 px-3 py-1 text-xs font-800 text-ink/60"
+                              style={{ fontWeight: 800 }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3 font-bold text-ink">{r.spanish}</td>
+                        <td className="px-4 py-3 text-ink/60">{r.english}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge s={r.status.es_to_en} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge s={r.status.en_to_es} />
+                        </td>
+                        <td className="px-3 py-3">
+                          {isConfirming ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="mr-1 text-xs font-bold text-ink/50">Delete?</span>
+                              <button
+                                onClick={() => performDelete(r)}
+                                className="rounded-full bg-tang px-2.5 py-1 text-xs font-800 text-white"
+                                style={{ fontWeight: 800 }}
+                                aria-label={`Confirm delete ${r.spanish}`}
+                              >
+                                Yes
+                              </button>
+                              <button
+                                onClick={() => setConfirmingId(null)}
+                                className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-800 text-ink/60"
+                                style={{ fontWeight: 800 }}
+                                aria-label="Cancel delete"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => startEdit(r)}
+                                className="rounded-full px-2 py-1 text-ink/30 transition hover:bg-grape/10 hover:text-grape"
+                                aria-label={`Edit ${r.spanish}`}
+                                title="Edit word"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => setConfirmingId(r.id)}
+                                disabled={isDeleting}
+                                className="rounded-full px-2 py-1 text-ink/30 transition hover:bg-tang/10 hover:text-tang disabled:opacity-40"
+                                aria-label={`Delete ${r.spanish}`}
+                                title="Delete word"
+                              >
+                                {isDeleting ? "…" : "🗑️"}
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 );
               })}
