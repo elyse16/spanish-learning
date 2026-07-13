@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
   const { data: card, error: fetchErr } = await supabase
     .from("card_progress")
-    .select("interval_days, ease_factor, repetitions")
+    .select("interval_days, ease_factor, repetitions, direction")
     .eq("id", card_id)
     .single();
 
@@ -42,6 +42,12 @@ export async function POST(req: Request) {
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
+
+  // Log the review for progress-over-time analytics. Best-effort: a logging
+  // failure should never fail the review itself.
+  await supabase
+    .from("reviews")
+    .insert({ card_id, direction: card.direction, got_it: gotIt });
 
   return NextResponse.json({ ok: true, mastered: update.mastered });
 }
