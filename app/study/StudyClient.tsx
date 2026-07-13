@@ -10,20 +10,49 @@ const DIRECTION_LABEL: Record<Direction, string> = {
   en_to_es: "🇬🇧 English → Spanish 🇪🇸",
 };
 
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export default function StudyClient({ direction }: { direction: Direction }) {
-  const [cards, setCards] = useState<SessionCard[] | null>(null);
+  const [queue, setQueue] = useState<SessionCard[] | null>(null); // current round
   const [idx, setIdx] = useState(0);
+  const [round, setRound] = useState(1);
+  const [initialCount, setInitialCount] = useState(0);
+  const [missed, setMissed] = useState<SessionCard[]>([]); // missed this round
+  const [graded, setGraded] = useState<Set<string>>(new Set()); // first-attempt SRS done
+  const [firstTryCorrect, setFirstTryCorrect] = useState(0);
+  const [pendingQueue, setPendingQueue] = useState<SessionCard[] | null>(null);
+  const [betweenRounds, setBetweenRounds] = useState<number | null>(null);
   const [flipped, setFlipped] = useState(false);
-  const [correct, setCorrect] = useState(0);
   const [loadError, setLoadError] = useState("");
 
+  function resetAll(cards: SessionCard[]) {
+    setQueue(cards);
+    setIdx(0);
+    setRound(1);
+    setInitialCount(cards.length);
+    setMissed([]);
+    setGraded(new Set());
+    setFirstTryCorrect(0);
+    setPendingQueue(null);
+    setBetweenRounds(null);
+    setFlipped(false);
+  }
+
   function loadSession() {
-    setCards(null);
+    setQueue(null);
+    setLoadError("");
     return fetch(`/api/session?direction=${direction}&size=20`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
-        setCards(data.cards);
+        resetAll(data.cards as SessionCard[]);
       })
       .catch((err) => setLoadError(err.message || "Failed to load"));
   }
@@ -35,35 +64,73 @@ export default function StudyClient({ direction }: { direction: Direction }) {
       .then((data) => {
         if (!active) return;
         if (data.error) throw new Error(data.error);
-        setCards(data.cards);
+        resetAll(data.cards as SessionCard[]);
       })
       .catch((err) => active && setLoadError(err.message || "Failed to load"));
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [direction]);
 
-  const current = cards?.[idx];
+  const current = queue?.[idx];
 
   const grade = useCallback(
-    async (gotIt: boolean) => {
-      if (!current) return;
-      if (gotIt) setCorrect((c) => c + 1);
-      // Fire-and-forget the review update; advance immediately for snappiness.
-      fetch("/api/review", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ card_id: current.card_id, gotIt }),
-      }).catch(() => {});
+    (gotIt: boolean) => {
+      if (!queue || !current) return;
+
+      // Only the FIRST attempt on a card drives the spaced-repetition schedule.
+      if (!graded.has(current.card_id)) {
+        fetch("/api/review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ card_id: current.card_id, gotIt }),
+        }).catch(() => {});
+        setGraded((prev) => new Set(prev).add(current.card_id));
+        if (gotIt) setFirstTryCorrect((c) => c + 1);
+      }
+
+      const newMissed = gotIt ? missed : [...missed, current];
+      const nextIdx = idx + 1;
       setFlipped(false);
-      setIdx((i) => i + 1);
+
+      if (nextIdx < queue.length) {
+        setMissed(newMissed);
+        setIdx(nextIdx);
+      } else if (newMissed.length > 0) {
+        // Round finished with cards still to clear — show the interstitial.
+        setPendingQueue(shuffle(newMissed));
+        setBetweenRounds(newMissed.length);
+        setMissed([]);
+      } else {
+        // Everything cleared.
+        setMissed([]);
+        setIdx(nextIdx); // idx >= queue.length && no pending round => done
+      }
     },
-    [current]
+    [queue, current, idx, missed, graded]
   );
 
-  // Keyboard shortcuts: space/enter flips, 1 = missed, 2 = got it.
+  function startNextRound() {
+    if (!pendingQueue) return;
+    setQueue(pendingQueue);
+    setIdx(0);
+    setRound((r) => r + 1);
+    setPendingQueue(null);
+    setBetweenRounds(null);
+    setFlipped(false);
+  }
+
+  // Keyboard: space/enter flips; 1 = missed, 2 = got it.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (betweenRounds !== null) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          startNextRound();
+        }
+        return;
+      }
       if (!current) return;
       if (!flipped && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
@@ -76,7 +143,8 @@ export default function StudyClient({ direction }: { direction: Direction }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, flipped, grade]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, flipped, grade, betweenRounds, pendingQueue]);
 
   if (loadError) {
     return (
@@ -86,14 +154,11 @@ export default function StudyClient({ direction }: { direction: Direction }) {
     );
   }
 
-  if (!cards) {
+  if (!queue) {
     return <p className="text-lg font-bold text-ink/50">Loading…</p>;
   }
 
-  const total = cards.length;
-  const done = idx >= total;
-
-  if (total === 0) {
+  if (initialCount === 0) {
     return (
       <div className="animate-pop-in rounded-3xl bg-white p-10 text-center shadow-pop">
         <div className="text-6xl">🎉</div>
@@ -114,17 +179,45 @@ export default function StudyClient({ direction }: { direction: Direction }) {
     );
   }
 
+  // Between-rounds interstitial.
+  if (betweenRounds !== null) {
+    return (
+      <div className="animate-pop-in rounded-3xl bg-white p-10 text-center shadow-pop">
+        <div className="text-6xl">🔁</div>
+        <h1 className="mt-3 font-display text-3xl font-700" style={{ fontWeight: 700 }}>
+          Round {round} done!
+        </h1>
+        <p className="mt-2 text-lg font-bold text-ink/70">
+          <span className="text-tang">{betweenRounds}</span> to review — let's nail them.
+        </p>
+        <button
+          onClick={startNextRound}
+          className="mt-6 rounded-full bg-tang px-6 py-3 font-800 text-white shadow-pop-sm"
+          style={{ fontWeight: 800 }}
+        >
+          Review {betweenRounds} again →
+          <span className="ml-2 text-xs text-white/70">(space)</span>
+        </button>
+      </div>
+    );
+  }
+
+  const done = idx >= queue.length;
+
   if (done) {
-    const pct = Math.round((correct / total) * 100);
+    const pct = initialCount > 0 ? Math.round((firstTryCorrect / initialCount) * 100) : 0;
     return (
       <div className="animate-pop-in rounded-3xl bg-white p-10 text-center shadow-pop">
         <div className="text-6xl">{pct >= 80 ? "🏆" : pct >= 50 ? "🎉" : "💪"}</div>
         <h1 className="mt-3 font-display text-3xl font-700" style={{ fontWeight: 700 }}>
-          Session complete!
+          All {initialCount} cleared!
         </h1>
         <p className="mt-2 text-lg font-bold text-ink/70">
-          You got <span className="text-teal-dark">{correct}</span> of {total} right
-          <span className="text-ink/40"> ({pct}%)</span>
+          Took {round} round{round === 1 ? "" : "s"} · first-try{" "}
+          <span className="text-teal-dark">
+            {firstTryCorrect}/{initialCount}
+          </span>{" "}
+          <span className="text-ink/40">({pct}%)</span>
         </p>
         <div className="mt-6 flex justify-center gap-3">
           <Link
@@ -135,12 +228,7 @@ export default function StudyClient({ direction }: { direction: Direction }) {
             Dashboard
           </Link>
           <button
-            onClick={() => {
-              setIdx(0);
-              setCorrect(0);
-              setFlipped(false);
-              loadSession();
-            }}
+            onClick={() => loadSession()}
             className="rounded-full bg-tang px-6 py-3 font-800 text-white shadow-pop-sm"
             style={{ fontWeight: 800 }}
           >
@@ -155,14 +243,19 @@ export default function StudyClient({ direction }: { direction: Direction }) {
     <div className="animate-pop-in">
       <div className="flex items-center justify-between text-sm font-bold text-ink/50">
         <span>{DIRECTION_LABEL[direction]}</span>
-        <span className="rounded-full bg-white px-3 py-1 shadow-pop-sm">
-          {idx + 1} / {total}
+        <span className="flex items-center gap-2">
+          {round > 1 && (
+            <span className="rounded-full bg-tang/10 px-3 py-1 text-tang">Round {round}</span>
+          )}
+          <span className="rounded-full bg-white px-3 py-1 shadow-pop-sm">
+            {idx + 1} / {queue.length}
+          </span>
         </span>
       </div>
       <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-white/70 shadow-inner">
         <div
           className="h-full rounded-full bg-gradient-to-r from-sunny to-tang transition-all duration-300"
-          style={{ width: `${(idx / total) * 100}%` }}
+          style={{ width: `${(idx / queue.length) * 100}%` }}
         />
       </div>
 
