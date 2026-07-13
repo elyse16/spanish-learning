@@ -38,16 +38,11 @@ function StatusBadge({
 export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) {
   const [rows, setRows] = useState(initialRows);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  async function handleDelete(row: WordRow) {
-    if (
-      !window.confirm(
-        `Delete "${row.spanish}" (${row.english})?\nThis also removes its progress and review history.`
-      )
-    ) {
-      return;
-    }
+  async function performDelete(row: WordRow) {
+    setConfirmingId(null);
     setError("");
     setDeleting((prev) => new Set(prev).add(row.id));
     try {
@@ -88,33 +83,61 @@ export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) 
                 <th className="px-4 py-3">English</th>
                 <th className="px-4 py-3">ES→EN</th>
                 <th className="px-4 py-3">EN→ES</th>
-                <th className="w-12 px-4 py-3"></th>
+                <th className="w-24 px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-b border-ink/5 last:border-0">
-                  <td className="px-4 py-3 font-bold text-ink">{r.spanish}</td>
-                  <td className="px-4 py-3 text-ink/60">{r.english}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge s={r.status.es_to_en} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge s={r.status.en_to_es} />
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => handleDelete(r)}
-                      disabled={deleting.has(r.id)}
-                      className="rounded-full px-2 py-1 text-ink/30 transition hover:bg-tang/10 hover:text-tang disabled:opacity-40"
-                      aria-label={`Delete ${r.spanish}`}
-                      title="Delete word"
-                    >
-                      {deleting.has(r.id) ? "…" : "🗑️"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const isConfirming = confirmingId === r.id;
+                const isDeleting = deleting.has(r.id);
+                return (
+                  <tr key={r.id} className="border-b border-ink/5 last:border-0">
+                    <td className="px-4 py-3 font-bold text-ink">{r.spanish}</td>
+                    <td className="px-4 py-3 text-ink/60">{r.english}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge s={r.status.es_to_en} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge s={r.status.en_to_es} />
+                    </td>
+                    <td className="px-4 py-3">
+                      {isConfirming ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="mr-1 text-xs font-bold text-ink/50">Delete?</span>
+                          <button
+                            onClick={() => performDelete(r)}
+                            className="rounded-full bg-tang px-2.5 py-1 text-xs font-800 text-white"
+                            style={{ fontWeight: 800 }}
+                            aria-label={`Confirm delete ${r.spanish}`}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setConfirmingId(null)}
+                            className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-800 text-ink/60"
+                            style={{ fontWeight: 800 }}
+                            aria-label="Cancel delete"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-right">
+                          <button
+                            onClick={() => setConfirmingId(r.id)}
+                            disabled={isDeleting}
+                            className="rounded-full px-2 py-1 text-ink/30 transition hover:bg-tang/10 hover:text-tang disabled:opacity-40"
+                            aria-label={`Delete ${r.spanish}`}
+                            title="Delete word"
+                          >
+                            {isDeleting ? "…" : "🗑️"}
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
