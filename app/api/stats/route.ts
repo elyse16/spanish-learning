@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase, type Direction } from "@/lib/supabase";
+import { bucketByStage } from "@/lib/progress";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,10 @@ export async function GET() {
     .from("words")
     .select("id", { count: "exact", head: true });
 
+  const { data: allCards } = await supabase
+    .from("card_progress")
+    .select("word_id, mastered, interval_days, repetitions");
+
   const [dueEsEn, dueEnEs, masteredEsEn, masteredEnEs] = await Promise.all([
     dueCount("es_to_en", nowIso),
     dueCount("en_to_es", nowIso),
@@ -41,5 +46,6 @@ export async function GET() {
     totalWords: totalWords ?? 0,
     due: { es_to_en: dueEsEn, en_to_es: dueEnEs },
     mastered: { es_to_en: masteredEsEn, en_to_es: masteredEnEs },
+    progress: bucketByStage(allCards ?? []),
   });
 }
