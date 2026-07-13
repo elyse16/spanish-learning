@@ -173,7 +173,10 @@ export default function StudyClient({ direction }: { direction: Direction }) {
           className="relative block h-64 w-full text-left"
           aria-label="Flip card"
         >
-          <div className={`flip-inner relative h-full w-full ${flipped ? "is-flipped" : ""}`}>
+          <div
+            key={current!.card_id}
+            className={`flip-inner relative h-full w-full ${flipped ? "is-flipped" : ""}`}
+          >
             {/* Front (prompt) */}
             <div className="flip-face absolute inset-0 flex flex-col items-center justify-center rounded-3xl bg-white p-8 text-center shadow-pop">
               <span className="text-xs font-800 uppercase tracking-widest text-tang" style={{ fontWeight: 800 }}>
