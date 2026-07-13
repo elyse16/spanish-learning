@@ -60,5 +60,12 @@ export async function GET(req: Request) {
     };
   });
 
+  // Shuffle so the same due cards don't appear in the same order every session
+  // (Fisher-Yates). We still selected the most-overdue `size` cards above.
+  for (let i = cards.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cards[i], cards[j]] = [cards[j], cards[i]];
+  }
+
   return NextResponse.json({ cards });
 }
