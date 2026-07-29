@@ -3,16 +3,18 @@ import { redirect } from "next/navigation";
 import { supabase, type Direction } from "@/lib/supabase";
 import { bucketByStage, type ProgressCounts } from "@/lib/progress";
 import { getProfileId } from "@/lib/profile";
+import { ensureCardsForProfile } from "@/lib/cards";
 
 export const dynamic = "force-dynamic";
 
 async function getStats(profileId: string) {
+  await ensureCardsForProfile(profileId);
   const nowIso = new Date().toISOString();
 
+  // The word library is shared across all profiles.
   const { count: totalWords } = await supabase
     .from("words")
-    .select("id", { count: "exact", head: true })
-    .eq("profile_id", profileId);
+    .select("id", { count: "exact", head: true });
 
   async function due(direction: Direction) {
     const { count } = await supabase

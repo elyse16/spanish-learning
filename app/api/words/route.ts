@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { supabase, type Direction } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { getProfileId } from "@/lib/profile";
+import { ensureCardsForProfile } from "@/lib/cards";
 
 export const dynamic = "force-dynamic";
 
@@ -38,28 +39,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const { data: inserted, error: insertErr } = await supabase
-    .from("words")
-    .insert(clean)
-    .select("id");
-
+  // Words go into the shared library. `profile_id` records who added them.
+  const { error: insertErr } = await supabase.from("words").insert(clean);
   if (insertErr) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
-  const directions: Direction[] = ["es_to_en", "en_to_es"];
-  const cards = (inserted ?? []).flatMap((w) =>
-    directions.map((direction) => ({
-      word_id: w.id,
-      direction,
-      profile_id: profileId,
-    }))
-  );
-
-  const { error: cardErr } = await supabase.from("card_progress").insert(cards);
-  if (cardErr) {
-    return NextResponse.json({ error: cardErr.message }, { status: 500 });
-  }
+  // Give the adder progress cards for the new words right away; other profiles
+  // pick them up lazily on their next study/dashboard load.
+  await ensureCardsForProfile(profileId);
 
   return NextResponse.json({ inserted: clean.length });
 }

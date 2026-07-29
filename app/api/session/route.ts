@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase, type Direction } from "@/lib/supabase";
 import { getProfileId } from "@/lib/profile";
+import { ensureCardsForProfile } from "@/lib/cards";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,9 @@ export async function GET(req: Request) {
     100,
     Math.max(1, parseInt(searchParams.get("size") ?? String(DEFAULT_SIZE), 10) || DEFAULT_SIZE)
   );
+
+  // Pick up any shared words this profile doesn't have cards for yet.
+  await ensureCardsForProfile(profileId);
 
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase

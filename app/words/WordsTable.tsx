@@ -7,6 +7,7 @@ export interface WordRow {
   id: string;
   spanish: string;
   english: string;
+  editable: boolean; // true only for words this profile added
   status: Record<Direction, { mastered: boolean; interval_days: number } | undefined>;
 }
 
@@ -211,7 +212,7 @@ export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) 
                                 No
                               </button>
                             </div>
-                          ) : (
+                          ) : r.editable ? (
                             <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={() => startEdit(r)}
@@ -230,6 +231,13 @@ export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) 
                               >
                                 {isDeleting ? "…" : "🗑️"}
                               </button>
+                            </div>
+                          ) : (
+                            <div
+                              className="text-right text-ink/20"
+                              title="Added by another profile — shared for study"
+                            >
+                              🔒
                             </div>
                           )}
                         </td>

@@ -2,15 +2,18 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabase, type Direction } from "@/lib/supabase";
 import { getProfileId } from "@/lib/profile";
+import { ensureCardsForProfile } from "@/lib/cards";
 import WordsTable, { type WordRow } from "./WordsTable";
 
 export const dynamic = "force-dynamic";
 
 async function getRows(profileId: string): Promise<WordRow[]> {
+  await ensureCardsForProfile(profileId);
+
+  // Words are the shared library; you can only edit/delete ones you added.
   const { data: words } = await supabase
     .from("words")
-    .select("id, spanish, english")
-    .eq("profile_id", profileId)
+    .select("id, spanish, english, profile_id")
     .order("created_at", { ascending: false });
 
   const { data: cards } = await supabase
@@ -24,6 +27,7 @@ async function getRows(profileId: string): Promise<WordRow[]> {
       id: w.id,
       spanish: w.spanish,
       english: w.english,
+      editable: w.profile_id === profileId,
       status: { es_to_en: undefined, en_to_es: undefined },
     });
   }

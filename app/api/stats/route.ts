@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase, type Direction } from "@/lib/supabase";
 import { bucketByStage } from "@/lib/progress";
 import { getProfileId } from "@/lib/profile";
+import { ensureCardsForProfile } from "@/lib/cards";
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +34,13 @@ export async function GET() {
     return NextResponse.json({ error: "No profile selected" }, { status: 401 });
   }
 
+  await ensureCardsForProfile(profileId);
   const nowIso = new Date().toISOString();
 
+  // The word library is shared across all profiles.
   const { count: totalWords } = await supabase
     .from("words")
-    .select("id", { count: "exact", head: true })
-    .eq("profile_id", profileId);
+    .select("id", { count: "exact", head: true });
 
   const { data: allCards } = await supabase
     .from("card_progress")
