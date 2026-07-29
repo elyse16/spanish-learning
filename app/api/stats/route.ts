@@ -1,23 +1,26 @@
 import { NextResponse } from "next/server";
 import { supabase, type Direction } from "@/lib/supabase";
 import { bucketByStage } from "@/lib/progress";
+import { getProfileId } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
-async function dueCount(direction: Direction, nowIso: string): Promise<number> {
+async function dueCount(profileId: string, direction: Direction, nowIso: string): Promise<number> {
   const { count } = await supabase
     .from("card_progress")
     .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId)
     .eq("direction", direction)
     .eq("mastered", false)
     .lte("due_at", nowIso);
   return count ?? 0;
 }
 
-async function masteredCount(direction: Direction): Promise<number> {
+async function masteredCount(profileId: string, direction: Direction): Promise<number> {
   const { count } = await supabase
     .from("card_progress")
     .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId)
     .eq("direction", direction)
     .eq("mastered", true);
   return count ?? 0;
@@ -25,21 +28,28 @@ async function masteredCount(direction: Direction): Promise<number> {
 
 // GET /api/stats — counts for the dashboard.
 export async function GET() {
+  const profileId = getProfileId();
+  if (!profileId) {
+    return NextResponse.json({ error: "No profile selected" }, { status: 401 });
+  }
+
   const nowIso = new Date().toISOString();
 
   const { count: totalWords } = await supabase
     .from("words")
-    .select("id", { count: "exact", head: true });
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId);
 
   const { data: allCards } = await supabase
     .from("card_progress")
-    .select("word_id, mastered, interval_days, repetitions");
+    .select("word_id, mastered, interval_days, repetitions")
+    .eq("profile_id", profileId);
 
   const [dueEsEn, dueEnEs, masteredEsEn, masteredEnEs] = await Promise.all([
-    dueCount("es_to_en", nowIso),
-    dueCount("en_to_es", nowIso),
-    masteredCount("es_to_en"),
-    masteredCount("en_to_es"),
+    dueCount(profileId, "es_to_en", nowIso),
+    dueCount(profileId, "en_to_es", nowIso),
+    masteredCount(profileId, "es_to_en"),
+    masteredCount(profileId, "en_to_es"),
   ]);
 
   return NextResponse.json({

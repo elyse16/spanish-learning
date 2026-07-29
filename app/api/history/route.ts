@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getProfileId } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/history — daily review aggregates for progress-over-time graphs.
 export async function GET() {
+  const profileId = getProfileId();
+  if (!profileId) {
+    return NextResponse.json({ error: "No profile selected" }, { status: 401 });
+  }
+
   const { data, error } = await supabase
     .from("reviews")
     .select("reviewed_at, got_it, card_id")
+    .eq("profile_id", profileId)
     .order("reviewed_at", { ascending: true });
 
   if (error) {

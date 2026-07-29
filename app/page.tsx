@@ -1,20 +1,24 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { supabase, type Direction } from "@/lib/supabase";
 import { bucketByStage, type ProgressCounts } from "@/lib/progress";
+import { getProfileId } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
-async function getStats() {
+async function getStats(profileId: string) {
   const nowIso = new Date().toISOString();
 
   const { count: totalWords } = await supabase
     .from("words")
-    .select("id", { count: "exact", head: true });
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId);
 
   async function due(direction: Direction) {
     const { count } = await supabase
       .from("card_progress")
       .select("id", { count: "exact", head: true })
+      .eq("profile_id", profileId)
       .eq("direction", direction)
       .eq("mastered", false)
       .lte("due_at", nowIso);
@@ -24,7 +28,8 @@ async function getStats() {
   // All cards, for per-word stage bucketing (analytics).
   const { data: allCards } = await supabase
     .from("card_progress")
-    .select("word_id, mastered, interval_days, repetitions");
+    .select("word_id, mastered, interval_days, repetitions")
+    .eq("profile_id", profileId);
 
   const [dueEsEn, dueEnEs] = await Promise.all([
     due("es_to_en"),
@@ -161,7 +166,9 @@ function StudyCard({
 }
 
 export default async function DashboardPage() {
-  const stats = await getStats();
+  const profileId = getProfileId();
+  if (!profileId) redirect("/profiles");
+  const stats = await getStats(profileId);
 
   return (
     <div className="animate-pop-in">

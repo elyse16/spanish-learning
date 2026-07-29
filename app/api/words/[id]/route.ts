@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getProfileId } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -8,12 +9,20 @@ export async function DELETE(
   _req: Request,
   { params }: { params: { id: string } }
 ) {
+  const profileId = getProfileId();
+  if (!profileId) {
+    return NextResponse.json({ error: "No profile selected" }, { status: 401 });
+  }
   const { id } = params;
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("words").delete().eq("id", id);
+  const { error } = await supabase
+    .from("words")
+    .delete()
+    .eq("id", id)
+    .eq("profile_id", profileId);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -26,6 +35,10 @@ export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
 ) {
+  const profileId = getProfileId();
+  if (!profileId) {
+    return NextResponse.json({ error: "No profile selected" }, { status: 401 });
+  }
   const { id } = params;
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
@@ -50,7 +63,8 @@ export async function PATCH(
   const { error } = await supabase
     .from("words")
     .update({ spanish, english })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("profile_id", profileId);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -1,18 +1,22 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { supabase, type Direction } from "@/lib/supabase";
+import { getProfileId } from "@/lib/profile";
 import WordsTable, { type WordRow } from "./WordsTable";
 
 export const dynamic = "force-dynamic";
 
-async function getRows(): Promise<WordRow[]> {
+async function getRows(profileId: string): Promise<WordRow[]> {
   const { data: words } = await supabase
     .from("words")
     .select("id, spanish, english")
+    .eq("profile_id", profileId)
     .order("created_at", { ascending: false });
 
   const { data: cards } = await supabase
     .from("card_progress")
-    .select("word_id, direction, mastered, interval_days");
+    .select("word_id, direction, mastered, interval_days")
+    .eq("profile_id", profileId);
 
   const byWord = new Map<string, WordRow>();
   for (const w of words ?? []) {
@@ -36,7 +40,9 @@ async function getRows(): Promise<WordRow[]> {
 }
 
 export default async function WordsPage() {
-  const rows = await getRows();
+  const profileId = getProfileId();
+  if (!profileId) redirect("/profiles");
+  const rows = await getRows(profileId);
 
   return (
     <div className="animate-pop-in">

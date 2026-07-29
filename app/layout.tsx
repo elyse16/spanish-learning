@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fredoka, Nunito } from "next/font/google";
 import Link from "next/link";
+import { getProfileName } from "@/lib/profile";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -35,6 +36,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const profileName = getProfileName();
   return (
     <html lang="en" className={`${fredoka.variable} ${nunito.variable}`}>
       <body>
@@ -50,6 +52,18 @@ export default function RootLayout({
             <NavLink href="/">Dashboard</NavLink>
             <NavLink href="/add">Add words</NavLink>
             <NavLink href="/words">All words</NavLink>
+            {profileName && (
+              <Link
+                href="/profiles"
+                className="ml-auto flex items-center gap-1.5 rounded-full bg-ink/5 px-3 py-1.5 text-sm font-bold text-ink/70 transition hover:bg-ink/10"
+                title="Switch profile"
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-tang text-xs font-800 text-white" style={{ fontWeight: 800 }}>
+                  {profileName.charAt(0).toUpperCase()}
+                </span>
+                {profileName}
+              </Link>
+            )}
           </nav>
         </header>
         <main className="mx-auto max-w-3xl px-4 py-8">{children}</main>

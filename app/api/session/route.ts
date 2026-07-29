@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase, type Direction } from "@/lib/supabase";
+import { getProfileId } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,11 @@ export interface SessionCard {
 // Newly added words are due immediately (due_at defaults to now()), so they
 // mix in with overdue cards, most-overdue first.
 export async function GET(req: Request) {
+  const profileId = getProfileId();
+  if (!profileId) {
+    return NextResponse.json({ error: "No profile selected" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const direction = (searchParams.get("direction") ?? "es_to_en") as Direction;
   if (direction !== "es_to_en" && direction !== "en_to_es") {
@@ -34,6 +40,7 @@ export async function GET(req: Request) {
   const { data, error } = await supabase
     .from("card_progress")
     .select("id, word_id, direction, words!inner(spanish, english)")
+    .eq("profile_id", profileId)
     .eq("direction", direction)
     .eq("mastered", false)
     .lte("due_at", nowIso)

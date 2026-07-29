@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { nextState } from "@/lib/srs";
+import { getProfileId } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
 // POST /api/review  { card_id: string, gotIt: boolean }
 // Applies the SRS update for a single card.
 export async function POST(req: Request) {
+  const profileId = getProfileId();
+  if (!profileId) {
+    return NextResponse.json({ error: "No profile selected" }, { status: 401 });
+  }
+
   let body: { card_id?: string; gotIt?: boolean };
   try {
     body = await req.json();
@@ -26,6 +32,7 @@ export async function POST(req: Request) {
     .from("card_progress")
     .select("interval_days, ease_factor, repetitions, direction")
     .eq("id", card_id)
+    .eq("profile_id", profileId)
     .single();
 
   if (fetchErr || !card) {
@@ -37,7 +44,8 @@ export async function POST(req: Request) {
   const { error: updateErr } = await supabase
     .from("card_progress")
     .update(update)
-    .eq("id", card_id);
+    .eq("id", card_id)
+    .eq("profile_id", profileId);
 
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
@@ -45,9 +53,12 @@ export async function POST(req: Request) {
 
   // Log the review for progress-over-time analytics. Best-effort: a logging
   // failure should never fail the review itself.
-  await supabase
-    .from("reviews")
-    .insert({ card_id, direction: card.direction, got_it: gotIt });
+  await supabase.from("reviews").insert({
+    card_id,
+    direction: card.direction,
+    got_it: gotIt,
+    profile_id: profileId,
+  });
 
   return NextResponse.json({ ok: true, mastered: update.mastered });
 }
