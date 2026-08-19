@@ -156,19 +156,27 @@ export default function StatsPage() {
       {/* Bar chart */}
       <div className="mt-6 rounded-3xl bg-white p-5 shadow-pop">
         <div className="overflow-x-auto">
-          <div className="flex h-52 items-end gap-1.5" style={{ minWidth: shown.length * 22 }}>
-            {shown.map((d) => (
-              <div key={d.date} className="flex flex-1 flex-col items-center justify-end" style={{ minWidth: 18 }}>
-                <div className="mb-1 text-[10px] font-bold text-ink/40">
-                  {d.cards > 0 ? d.batches.toFixed(d.batches < 1 ? 1 : d.batches % 1 === 0 ? 0 : 1) : ""}
-                </div>
+          <div className="flex items-end gap-1.5" style={{ minWidth: shown.length * 22 }}>
+            {shown.map((d) => {
+              const barPx =
+                d.cards > 0 ? Math.max(8, Math.round((d.cards / maxCards) * 176)) : 3;
+              return (
                 <div
-                  className={`w-full rounded-t-md ${d.cards > 0 ? "bg-gradient-to-t from-tang to-sunny" : "bg-ink/5"}`}
-                  style={{ height: `${d.cards > 0 ? Math.max(4, (d.cards / maxCards) * 100) : 2}%` }}
-                  title={`${d.label} — ${d.cards} card${d.cards === 1 ? "" : "s"} (${d.batches.toFixed(1)} batches)`}
-                />
-              </div>
-            ))}
+                  key={d.date}
+                  className="flex flex-1 flex-col items-center justify-end"
+                  style={{ minWidth: 18 }}
+                >
+                  <div className="mb-1 h-3 text-[10px] font-bold leading-none text-ink/45">
+                    {d.cards > 0 ? d.batches.toFixed(1) : ""}
+                  </div>
+                  <div
+                    className={`w-full rounded-t-md ${d.cards > 0 ? "bg-tang" : "bg-ink/10"}`}
+                    style={{ height: `${barPx}px` }}
+                    title={`${d.label} — ${d.cards} card${d.cards === 1 ? "" : "s"} (${d.batches.toFixed(1)} batches)`}
+                  />
+                </div>
+              );
+            })}
           </div>
           {/* Date labels: every ~7th day to avoid crowding */}
           <div className="mt-2 flex gap-1.5" style={{ minWidth: shown.length * 22 }}>
