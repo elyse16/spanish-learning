@@ -49,5 +49,7 @@ export async function GET() {
     totalCorrect: rows.filter((r) => r.got_it).length,
     distinctCards: seenCards.size,
     days,
+    // Raw timestamps so the client can bucket by the user's local day.
+    reviewedAt: rows.map((r) => r.reviewed_at),
   });
 }

@@ -52,6 +52,7 @@ export default function RootLayout({
             <NavLink href="/">Dashboard</NavLink>
             <NavLink href="/add">Add words</NavLink>
             <NavLink href="/words">All words</NavLink>
+            <NavLink href="/stats">Stats</NavLink>
             {profileName && (
               <Link
                 href="/profiles"
