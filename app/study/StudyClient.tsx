@@ -6,8 +6,8 @@ import type { Direction } from "@/lib/supabase";
 import type { SessionCard } from "@/app/api/session/route";
 
 const DIRECTION_LABEL: Record<Direction, string> = {
-  es_to_en: "🇪🇸 Spanish → English 🇬🇧",
-  en_to_es: "🇬🇧 English → Spanish 🇪🇸",
+  es_to_en: "🇲🇽 Spanish → English 🇬🇧",
+  en_to_es: "🇬🇧 English → Spanish 🇲🇽",
 };
 
 function shuffle<T>(arr: T[]): T[] {

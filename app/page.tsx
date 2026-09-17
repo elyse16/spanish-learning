@@ -205,14 +205,14 @@ export default async function DashboardPage() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <StudyCard
           direction="es_to_en"
-          flag="🇪🇸 → 🇬🇧"
+          flag="🇲🇽 → 🇬🇧"
           label="Spanish → English"
           color="tang"
           due={stats.due.es_to_en}
         />
         <StudyCard
           direction="en_to_es"
-          flag="🇬🇧 → 🇪🇸"
+          flag="🇬🇧 → 🇲🇽"
           label="English → Spanish"
           color="teal"
           due={stats.due.en_to_es}
