@@ -6,16 +6,29 @@ import { parseVocab, type ParsedRow } from "@/lib/parse";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
+const norm = (s: string) => s.trim().toLowerCase();
+
 export default function AddPage() {
   const [raw, setRaw] = useState("");
   const [rows, setRows] = useState<ParsedRow[] | null>(null);
+  const [existing, setExisting] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
-  function handleParse() {
+  async function handleParse() {
     setRows(parseVocab(raw));
     setStatus("idle");
     setMessage("");
+    // Load the current library so we can flag repeats.
+    try {
+      const res = await fetch("/api/words");
+      const data = await res.json();
+      if (res.ok) {
+        setExisting(new Set<string>((data.spanish ?? []).map((s: string) => norm(s))));
+      }
+    } catch {
+      /* non-fatal — just skip duplicate flagging */
+    }
   }
 
   function updateRow(i: number, field: keyof ParsedRow, value: string) {
@@ -31,8 +44,21 @@ export default function AddPage() {
     setRows((prev) => (prev ? prev.filter((_, idx) => idx !== i) : prev));
   }
 
-  const readyRows = rows?.filter((r) => r.spanish.trim() && r.english.trim()) ?? [];
-  const incompleteCount = (rows?.length ?? 0) - readyRows.length;
+  // Per-row flags: complete, duplicate (already in library or earlier in this paste).
+  const seen = new Set<string>();
+  const flags = (rows ?? []).map((r) => {
+    const key = norm(r.spanish);
+    const complete = !!r.spanish.trim() && !!r.english.trim();
+    const inLibrary = key !== "" && existing.has(key);
+    const inBatch = key !== "" && seen.has(key);
+    if (key) seen.add(key);
+    return { complete, duplicate: inLibrary || inBatch, inLibrary, inBatch };
+  });
+
+  const readyRows =
+    rows?.filter((r, i) => flags[i].complete && !flags[i].duplicate) ?? [];
+  const incompleteCount = flags.filter((f) => !f.complete && !f.duplicate).length;
+  const duplicateCount = flags.filter((f) => f.duplicate).length;
 
   async function handleSave() {
     if (readyRows.length === 0) return;
@@ -65,14 +91,15 @@ export default function AddPage() {
       </h1>
       <p className="mt-1 font-semibold text-ink/60">
         Paste the list from your lesson. Each line splits into Spanish and English on
-        the first “-” or “:”. Fix anything in the table before saving.
+        the first “-”, “:”, or “=”. Words already in your library are flagged and
+        skipped. Fix anything in the table before saving.
       </p>
 
       <textarea
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
         rows={8}
-        placeholder={"el gato- the cat\nel programador\ndelgado- thin /skinny"}
+        placeholder={"el gato = the cat\nel programador\ndelgado- thin /skinny"}
         className="mt-4 w-full rounded-2xl border-2 border-ink/10 bg-white p-4 font-mono text-sm shadow-pop-sm outline-none transition focus:border-tang"
       />
 
@@ -91,15 +118,20 @@ export default function AddPage() {
         <div className="mt-6">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-xl font-600" style={{ fontWeight: 600 }}>
-              Review{" "}
-              <span className="text-teal-dark">({readyRows.length} ready)</span>
+              Review <span className="text-teal-dark">({readyRows.length} new)</span>
             </h2>
-            {incompleteCount > 0 && (
-              <span className="rounded-full bg-sunny/25 px-3 py-1 text-sm font-bold text-sunny-dark">
-                ⚠️ {incompleteCount} row{incompleteCount === 1 ? "" : "s"} need a
-                translation
-              </span>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {duplicateCount > 0 && (
+                <span className="rounded-full bg-tang/15 px-3 py-1 text-sm font-bold text-tang">
+                  🔁 {duplicateCount} already in library (skipped)
+                </span>
+              )}
+              {incompleteCount > 0 && (
+                <span className="rounded-full bg-sunny/25 px-3 py-1 text-sm font-bold text-sunny-dark">
+                  ⚠️ {incompleteCount} need a translation
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="overflow-hidden rounded-2xl bg-white shadow-pop">
@@ -108,19 +140,20 @@ export default function AddPage() {
                 <tr className="border-b-2 border-ink/5">
                   <th className="px-3 py-2">Spanish</th>
                   <th className="px-3 py-2">English</th>
+                  <th className="w-28 px-3 py-2">Status</th>
                   <th className="w-10 px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, i) => {
-                  const incomplete = !row.spanish.trim() || !row.english.trim();
+                  const f = flags[i];
+                  const rowBg = f.duplicate
+                    ? "bg-tang/5"
+                    : !f.complete
+                      ? "bg-sunny/10"
+                      : "";
                   return (
-                    <tr
-                      key={i}
-                      className={`border-b border-ink/5 last:border-0 ${
-                        incomplete ? "bg-sunny/10" : ""
-                      }`}
-                    >
+                    <tr key={i} className={`border-b border-ink/5 last:border-0 ${rowBg}`}>
                       <td className="px-2 py-1">
                         <input
                           value={row.spanish}
@@ -135,6 +168,29 @@ export default function AddPage() {
                           placeholder="translation…"
                           className="w-full rounded-lg border-2 border-transparent bg-transparent px-2 py-1.5 text-ink outline-none placeholder:text-sunny-dark/60 focus:border-tang focus:bg-white"
                         />
+                      </td>
+                      <td className="px-2 py-1">
+                        {f.duplicate ? (
+                          <span
+                            className="rounded-full bg-tang/15 px-2 py-0.5 text-xs font-800 text-tang"
+                            style={bold800}
+                            title={
+                              f.inLibrary
+                                ? "Already in your library"
+                                : "Repeated in this paste"
+                            }
+                          >
+                            🔁 {f.inLibrary ? "in library" : "repeat"}
+                          </span>
+                        ) : !f.complete ? (
+                          <span className="text-xs font-bold text-sunny-dark">
+                            needs translation
+                          </span>
+                        ) : (
+                          <span className="text-xs font-800 text-teal-dark" style={bold800}>
+                            ✓ new
+                          </span>
+                        )}
                       </td>
                       <td className="px-2 py-1 text-center">
                         <button
@@ -159,13 +215,13 @@ export default function AddPage() {
               className="rounded-full bg-tang px-6 py-3 font-800 text-white shadow-pop transition active:translate-y-1 active:shadow-pop-sm disabled:opacity-40"
               style={bold800}
             >
-              {status === "saving" ? "Saving…" : `💾 Save ${readyRows.length} words`}
+              {status === "saving"
+                ? "Saving…"
+                : `💾 Save ${readyRows.length} new word${readyRows.length === 1 ? "" : "s"}`}
             </button>
             {message && (
               <span
-                className={`font-bold ${
-                  status === "error" ? "text-tang" : "text-teal-dark"
-                }`}
+                className={`font-bold ${status === "error" ? "text-tang" : "text-teal-dark"}`}
               >
                 {message}
               </span>

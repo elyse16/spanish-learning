@@ -6,6 +6,10 @@ import { ensureCardsForProfile } from "@/lib/cards";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_SIZE = 20;
+// How many due cards to pull before randomly sampling the session from them.
+// Sampling from a large pool mixes themes and difficulty instead of always
+// serving the same cluster of most-overdue cards.
+const POOL_CAP = 500;
 
 export interface SessionCard {
   card_id: string;
@@ -41,6 +45,9 @@ export async function GET(req: Request) {
   await ensureCardsForProfile(profileId);
 
   const nowIso = new Date().toISOString();
+  // Pull a large pool of everything currently due, then randomly sample the
+  // session from it — so sessions vary in theme and difficulty instead of
+  // always being the same most-overdue cluster.
   const { data, error } = await supabase
     .from("card_progress")
     .select("id, word_id, direction, words!inner(spanish, english)")
@@ -49,13 +56,13 @@ export async function GET(req: Request) {
     .eq("mastered", false)
     .lte("due_at", nowIso)
     .order("due_at", { ascending: true })
-    .limit(size);
+    .limit(POOL_CAP);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const cards: SessionCard[] = (data ?? []).map((row) => {
+  const pool: SessionCard[] = (data ?? []).map((row) => {
     // Supabase types the joined relation as an array; grab the single word.
     const word = Array.isArray(row.words) ? row.words[0] : row.words;
     const spanish = word?.spanish ?? "";
@@ -71,12 +78,14 @@ export async function GET(req: Request) {
     };
   });
 
-  // Shuffle so the same due cards don't appear in the same order every session
-  // (Fisher-Yates). We still selected the most-overdue `size` cards above.
-  for (let i = cards.length - 1; i > 0; i--) {
+  // Fisher-Yates shuffle the whole due pool, then take this session's cards.
+  // Random sampling across all due cards mixes themes and difficulty, and
+  // makes each session (and any "study more") a fresh random draw.
+  for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [cards[i], cards[j]] = [cards[j], cards[i]];
+    [pool[i], pool[j]] = [pool[j], pool[i]];
   }
 
+  const cards = pool.slice(0, size);
   return NextResponse.json({ cards });
 }

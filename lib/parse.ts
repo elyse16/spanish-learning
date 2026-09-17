@@ -8,14 +8,16 @@
 //
 //   delgado- thin /skinny
 //
-// Strategy: skip blank lines; split each line on the FIRST "-" or ":" into
-// spanish / english. Lines with no separator become a spanish-only row with an
-// empty english field so the user can fill it in during the review step.
+// Strategy: skip blank lines; split each line on the FIRST "-", ":", or "="
+// into spanish / english. Lines with no separator become a spanish-only row
+// with an empty english field so the user can fill it in during the review step.
 
 export interface ParsedRow {
   spanish: string;
   english: string;
 }
+
+const SEPARATORS = ["-", ":", "="];
 
 export function parseVocab(input: string): ParsedRow[] {
   const rows: ParsedRow[] = [];
@@ -24,13 +26,12 @@ export function parseVocab(input: string): ParsedRow[] {
     const line = rawLine.trim();
     if (!line) continue;
 
-    // Find the first "-" or ":" separator.
-    const dashIdx = line.indexOf("-");
-    const colonIdx = line.indexOf(":");
+    // Find the earliest of the supported separators.
     let sepIdx = -1;
-    if (dashIdx === -1) sepIdx = colonIdx;
-    else if (colonIdx === -1) sepIdx = dashIdx;
-    else sepIdx = Math.min(dashIdx, colonIdx);
+    for (const sep of SEPARATORS) {
+      const i = line.indexOf(sep);
+      if (i !== -1 && (sepIdx === -1 || i < sepIdx)) sepIdx = i;
+    }
 
     if (sepIdx === -1) {
       rows.push({ spanish: line, english: "" });

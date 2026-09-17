@@ -10,6 +10,19 @@ interface IncomingWord {
   english: string;
 }
 
+// GET /api/words — the shared library's Spanish words (for duplicate checks).
+export async function GET() {
+  const profileId = getProfileId();
+  if (!profileId) {
+    return NextResponse.json({ error: "No profile selected" }, { status: 401 });
+  }
+  const { data, error } = await supabase.from("words").select("spanish");
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ spanish: (data ?? []).map((w) => w.spanish) });
+}
+
 // POST /api/words — bulk insert words and create both direction cards for each.
 export async function POST(req: Request) {
   const profileId = getProfileId();
