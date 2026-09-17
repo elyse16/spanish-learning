@@ -1,4 +1,5 @@
 import { supabase, type Direction } from "./supabase";
+import { CONJ_CARDS } from "./conjugation";
 
 const DIRECTIONS: Direction[] = ["es_to_en", "en_to_es"];
 
@@ -29,6 +30,28 @@ export async function ensureCardsForProfile(profileId: string): Promise<void> {
   if (toInsert.length > 0) {
     await supabase.from("card_progress").upsert(toInsert, {
       onConflict: "profile_id,word_id,direction",
+      ignoreDuplicates: true,
+    });
+  }
+}
+
+// Ensure the profile has a progress row for every conjugation card in the
+// catalog. The catalog lives in code (lib/conjugation.ts), keyed by card_key.
+export async function ensureConjugationCards(profileId: string): Promise<void> {
+  const { data: existing } = await supabase
+    .from("conjugation_progress")
+    .select("card_key")
+    .eq("profile_id", profileId);
+
+  const have = new Set((existing ?? []).map((c) => c.card_key));
+  const toInsert = CONJ_CARDS.filter((c) => !have.has(c.key)).map((c) => ({
+    profile_id: profileId,
+    card_key: c.key,
+  }));
+
+  if (toInsert.length > 0) {
+    await supabase.from("conjugation_progress").upsert(toInsert, {
+      onConflict: "profile_id,card_key",
       ignoreDuplicates: true,
     });
   }

@@ -50,6 +50,7 @@ export default function RootLayout({
               🌶️ ¡Vocab!
             </Link>
             <NavLink href="/">Dashboard</NavLink>
+            <NavLink href="/conjugate">Conjugate</NavLink>
             <NavLink href="/add">Add words</NavLink>
             <NavLink href="/words">All words</NavLink>
             <NavLink href="/stats">Stats</NavLink>

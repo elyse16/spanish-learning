@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { supabase, type Direction } from "@/lib/supabase";
-import { bucketByStage, type ProgressCounts } from "@/lib/progress";
+import { bucketByStage, cardStage, type ProgressCounts } from "@/lib/progress";
 import { getProfileId } from "@/lib/profile";
-import { ensureCardsForProfile } from "@/lib/cards";
+import { ensureCardsForProfile, ensureConjugationCards } from "@/lib/cards";
 
 export const dynamic = "force-dynamic";
 
 async function getStats(profileId: string) {
   await ensureCardsForProfile(profileId);
+  await ensureConjugationCards(profileId);
   const nowIso = new Date().toISOString();
 
   // The word library is shared across all profiles.
@@ -33,6 +34,23 @@ async function getStats(profileId: string) {
     .select("word_id, mastered, interval_days, repetitions")
     .eq("profile_id", profileId);
 
+  // Conjugation progress (each card is standalone — bucket per card).
+  const { count: conjDue } = await supabase
+    .from("conjugation_progress")
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId)
+    .eq("mastered", false)
+    .lte("due_at", nowIso);
+  const { data: conjCards } = await supabase
+    .from("conjugation_progress")
+    .select("mastered, interval_days, repetitions")
+    .eq("profile_id", profileId);
+  const conjProgress: ProgressCounts = { new: 0, learning: 0, mastered: 0, total: 0 };
+  for (const c of conjCards ?? []) {
+    conjProgress[cardStage(c)] += 1;
+    conjProgress.total += 1;
+  }
+
   const [dueEsEn, dueEnEs] = await Promise.all([
     due("es_to_en"),
     due("en_to_es"),
@@ -42,6 +60,7 @@ async function getStats(profileId: string) {
     totalWords: totalWords ?? 0,
     due: { es_to_en: dueEsEn, en_to_es: dueEnEs },
     progress: bucketByStage(allCards ?? []),
+    conjugation: { due: conjDue ?? 0, progress: conjProgress },
   };
 }
 
@@ -201,6 +220,38 @@ export default async function DashboardPage() {
       </div>
 
       <ProgressSection p={stats.progress} />
+
+      {/* Conjugations */}
+      <Link
+        href="/conjugate"
+        className="group mt-4 block rounded-3xl bg-grape p-6 text-white shadow-pop transition active:translate-y-1 active:shadow-pop-sm"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-3xl">🔀</div>
+            <div className="mt-2 font-display text-lg font-600" style={{ fontWeight: 600 }}>
+              Conjugations · past tense
+            </div>
+            <div className="mt-3 flex items-baseline gap-2">
+              <span className="font-display text-5xl font-700" style={{ fontWeight: 700 }}>
+                {stats.conjugation.due}
+              </span>
+              <span className="text-sm font-bold opacity-90">due now</span>
+            </div>
+            <div className="mt-1 text-xs font-semibold opacity-80">
+              🏆 {stats.conjugation.progress.mastered} mastered · 📚{" "}
+              {stats.conjugation.progress.learning} learning · 🌱{" "}
+              {stats.conjugation.progress.new} new
+            </div>
+          </div>
+        </div>
+        <div
+          className="mt-5 inline-block rounded-full bg-white px-5 py-2 text-sm font-800 text-grape-dark shadow-pop-sm transition group-hover:-translate-y-0.5"
+          style={{ fontWeight: 800 }}
+        >
+          {stats.conjugation.due > 0 ? "Practice →" : "Review anyway →"}
+        </div>
+      </Link>
 
       <div className="mt-6">
         <Link

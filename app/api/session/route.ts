@@ -6,10 +6,6 @@ import { ensureCardsForProfile } from "@/lib/cards";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_SIZE = 20;
-// How many due cards to pull before randomly sampling the session from them.
-// Sampling from a large pool mixes themes and difficulty instead of always
-// serving the same cluster of most-overdue cards.
-const POOL_CAP = 500;
 
 export interface SessionCard {
   card_id: string;
@@ -45,9 +41,10 @@ export async function GET(req: Request) {
   await ensureCardsForProfile(profileId);
 
   const nowIso = new Date().toISOString();
-  // Pull a large pool of everything currently due, then randomly sample the
-  // session from it — so sessions vary in theme and difficulty instead of
-  // always being the same most-overdue cluster.
+  // Pull a window of the *least-recently-studied* due cards (never-seen first),
+  // then randomly sample the session from that window. This mixes themes and
+  // difficulty AND pushes anything you just studied to the bottom of the pile.
+  const windowSize = Math.max(size * 4, 60);
   const { data, error } = await supabase
     .from("card_progress")
     .select("id, word_id, direction, words!inner(spanish, english)")
@@ -55,8 +52,8 @@ export async function GET(req: Request) {
     .eq("direction", direction)
     .eq("mastered", false)
     .lte("due_at", nowIso)
-    .order("due_at", { ascending: true })
-    .limit(POOL_CAP);
+    .order("last_reviewed_at", { ascending: true, nullsFirst: true })
+    .limit(windowSize);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
