@@ -7,6 +7,7 @@ import { CONJ_CARD_BY_KEY, type Person } from "@/lib/conjugation";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_SIZE = 20;
+const POOL_CAP = 2000;
 
 export interface ConjSessionCard {
   card_key: string;
@@ -34,15 +35,13 @@ export async function GET(req: Request) {
   await ensureConjugationCards(profileId);
 
   const nowIso = new Date().toISOString();
-  const windowSize = Math.max(size * 4, 60);
   const { data, error } = await supabase
     .from("conjugation_progress")
     .select("card_key")
     .eq("profile_id", profileId)
     .eq("mastered", false)
     .lte("due_at", nowIso)
-    .order("last_reviewed_at", { ascending: true, nullsFirst: true })
-    .limit(windowSize);
+    .limit(POOL_CAP);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
