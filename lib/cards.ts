@@ -1,5 +1,5 @@
 import { supabase, type Direction } from "./supabase";
-import { CONJ_CARDS } from "./conjugation";
+import { CONJ_VERBS } from "./conjugation";
 
 const DIRECTIONS: Direction[] = ["es_to_en", "en_to_es"];
 
@@ -35,20 +35,33 @@ export async function ensureCardsForProfile(profileId: string): Promise<void> {
   }
 }
 
-// Ensure the profile has a progress row for every conjugation card in the
-// catalog. The catalog lives in code (lib/conjugation.ts), keyed by card_key.
+// Ensure the profile has a progress row for every conjugation VERB in the
+// catalog (keyed by card_key), and prune any stale keys from earlier versions
+// of the catalog (e.g. the old per-person cards). Self-migrating on load.
 export async function ensureConjugationCards(profileId: string): Promise<void> {
+  const catalogKeys = new Set(CONJ_VERBS.map((v) => v.key));
+
   const { data: existing } = await supabase
     .from("conjugation_progress")
     .select("card_key")
     .eq("profile_id", profileId);
 
-  const have = new Set((existing ?? []).map((c) => c.card_key));
-  const toInsert = CONJ_CARDS.filter((c) => !have.has(c.key)).map((c) => ({
-    profile_id: profileId,
-    card_key: c.key,
-  }));
+  const existingKeys = (existing ?? []).map((c) => c.card_key);
 
+  const stale = existingKeys.filter((k) => !catalogKeys.has(k));
+  if (stale.length > 0) {
+    await supabase
+      .from("conjugation_progress")
+      .delete()
+      .eq("profile_id", profileId)
+      .in("card_key", stale);
+  }
+
+  const have = new Set(existingKeys.filter((k) => catalogKeys.has(k)));
+  const toInsert = CONJ_VERBS.filter((v) => !have.has(v.key)).map((v) => ({
+    profile_id: profileId,
+    card_key: v.key,
+  }));
   if (toInsert.length > 0) {
     await supabase.from("conjugation_progress").upsert(toInsert, {
       onConflict: "profile_id,card_key",

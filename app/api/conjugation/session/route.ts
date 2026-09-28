@@ -2,24 +2,24 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getProfileId } from "@/lib/profile";
 import { ensureConjugationCards } from "@/lib/cards";
-import { CONJ_CARD_BY_KEY, type Person } from "@/lib/conjugation";
+import { CONJ_VERB_BY_KEY, FULL_TABLE_AT, type ConjSlot } from "@/lib/conjugation";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_SIZE = 20;
+const DEFAULT_SIZE = 8; // verbs per session
 const POOL_CAP = 2000;
 
-export interface ConjSessionCard {
+export interface ConjSessionVerb {
   card_key: string;
   verb: string;
-  personLabel: string;
-  tenseLabel: string;
   kind: "regular" | "irregular";
-  answer: string;
-  person: Person;
+  tenseLabel: string;
+  mode: "step" | "table"; // guided one-at-a-time, or full-table check
+  slots: ConjSlot[];
 }
 
-// GET /api/conjugation/session?size=20 — due conjugation cards, randomly sampled.
+// GET /api/conjugation/session?size=8 — due verbs, freshest first, shuffled
+// within each freshness tier, each tagged with its adaptive mode.
 export async function GET(req: Request) {
   const profileId = getProfileId();
   if (!profileId) {
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const size = Math.min(
-    100,
+    50,
     Math.max(1, parseInt(searchParams.get("size") ?? String(DEFAULT_SIZE), 10) || DEFAULT_SIZE)
   );
 
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from("conjugation_progress")
-    .select("card_key, last_reviewed_at")
+    .select("card_key, last_reviewed_at, repetitions")
     .eq("profile_id", profileId)
     .eq("mastered", false)
     .lte("due_at", nowIso)
@@ -47,22 +47,20 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Least-recently-studied first (never-studied at the front), shuffled within
-  // each freshness tier — so you work through everything before repeats.
+  // Least-recently-studied first (never-studied at the front), random tiebreak.
   const pool = [];
   for (const row of data ?? []) {
-    const card = CONJ_CARD_BY_KEY.get(row.card_key);
-    if (!card) continue; // stale key no longer in the catalog
+    const verb = CONJ_VERB_BY_KEY.get(row.card_key);
+    if (!verb) continue;
     pool.push({
       card: {
-        card_key: card.key,
-        verb: card.verb,
-        personLabel: card.personLabel,
-        tenseLabel: card.tenseLabel,
-        kind: card.kind,
-        answer: card.answer,
-        person: card.person,
-      } as ConjSessionCard,
+        card_key: verb.key,
+        verb: verb.verb,
+        kind: verb.kind,
+        tenseLabel: verb.tenseLabel,
+        mode: (row.repetitions ?? 0) >= FULL_TABLE_AT ? "table" : "step",
+        slots: verb.slots,
+      } as ConjSessionVerb,
       t: row.last_reviewed_at ? Date.parse(row.last_reviewed_at) : -Infinity,
       r: Math.random(),
     });
@@ -70,5 +68,5 @@ export async function GET(req: Request) {
 
   pool.sort((a, b) => a.t - b.t || a.r - b.r);
 
-  return NextResponse.json({ cards: pool.slice(0, size).map((p) => p.card) });
+  return NextResponse.json({ verbs: pool.slice(0, size).map((p) => p.card) });
 }
