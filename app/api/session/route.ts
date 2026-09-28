@@ -44,14 +44,15 @@ export async function GET(req: Request) {
   await ensureCardsForProfile(profileId);
 
   const nowIso = new Date().toISOString();
-  // Pull the whole pool of currently-due cards, then randomly sample the
-  // session from it. This mixes themes/difficulty and gives every due card —
-  // including words you just added — a fair chance. Cards you've already
-  // answered aren't "due" (their next-review date is in the future), so they
-  // naturally stay out until they come back around.
+  // Pull the whole pool of currently-due cards. We then order by "freshness"
+  // (least-recently-studied first, never-studied at the very front) and shuffle
+  // *within* each freshness tier. This guarantees you cycle through all your
+  // words before any repeats, while still mixing themes and giving recent
+  // additions a fair chance. Cards you just answered have a recent
+  // last_reviewed_at, so they sink to the bottom.
   const { data, error } = await supabase
     .from("card_progress")
-    .select("id, word_id, direction, words!inner(spanish, english)")
+    .select("id, word_id, direction, last_reviewed_at, words!inner(spanish, english)")
     .eq("profile_id", profileId)
     .eq("direction", direction)
     .eq("mastered", false)
@@ -62,30 +63,28 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const pool: SessionCard[] = (data ?? []).map((row) => {
-    // Supabase types the joined relation as an array; grab the single word.
+  const pool = (data ?? []).map((row) => {
     const word = Array.isArray(row.words) ? row.words[0] : row.words;
     const spanish = word?.spanish ?? "";
     const english = word?.english ?? "";
     return {
-      card_id: row.id,
-      word_id: row.word_id,
-      direction,
-      spanish,
-      english,
-      prompt: direction === "es_to_en" ? spanish : english,
-      answer: direction === "es_to_en" ? english : spanish,
+      card: {
+        card_id: row.id,
+        word_id: row.word_id,
+        direction,
+        spanish,
+        english,
+        prompt: direction === "es_to_en" ? spanish : english,
+        answer: direction === "es_to_en" ? english : spanish,
+      } as SessionCard,
+      // never-studied (null) sorts first; then oldest-studied.
+      t: row.last_reviewed_at ? Date.parse(row.last_reviewed_at) : -Infinity,
+      r: Math.random(), // random tiebreak within a freshness tier
     };
   });
 
-  // Fisher-Yates shuffle the whole due pool, then take this session's cards.
-  // Random sampling across all due cards mixes themes and difficulty, and
-  // makes each session (and any "study more") a fresh random draw.
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
+  pool.sort((a, b) => a.t - b.t || a.r - b.r);
 
-  const cards = pool.slice(0, size);
+  const cards = pool.slice(0, size).map((p) => p.card);
   return NextResponse.json({ cards });
 }

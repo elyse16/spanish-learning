@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from("conjugation_progress")
-    .select("card_key")
+    .select("card_key, last_reviewed_at")
     .eq("profile_id", profileId)
     .eq("mastered", false)
     .lte("due_at", nowIso)
@@ -47,26 +47,28 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const pool: ConjSessionCard[] = [];
+  // Least-recently-studied first (never-studied at the front), shuffled within
+  // each freshness tier — so you work through everything before repeats.
+  const pool = [];
   for (const row of data ?? []) {
     const card = CONJ_CARD_BY_KEY.get(row.card_key);
     if (!card) continue; // stale key no longer in the catalog
     pool.push({
-      card_key: card.key,
-      verb: card.verb,
-      personLabel: card.personLabel,
-      tenseLabel: card.tenseLabel,
-      kind: card.kind,
-      answer: card.answer,
-      person: card.person,
+      card: {
+        card_key: card.key,
+        verb: card.verb,
+        personLabel: card.personLabel,
+        tenseLabel: card.tenseLabel,
+        kind: card.kind,
+        answer: card.answer,
+        person: card.person,
+      } as ConjSessionCard,
+      t: row.last_reviewed_at ? Date.parse(row.last_reviewed_at) : -Infinity,
+      r: Math.random(),
     });
   }
 
-  // Shuffle the whole due pool, then take this session's cards.
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
+  pool.sort((a, b) => a.t - b.t || a.r - b.r);
 
-  return NextResponse.json({ cards: pool.slice(0, size) });
+  return NextResponse.json({ cards: pool.slice(0, size).map((p) => p.card) });
 }
