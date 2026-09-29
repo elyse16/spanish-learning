@@ -6,7 +6,15 @@ import { parseVocab, type ParsedRow } from "@/lib/parse";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
-const norm = (s: string) => s.trim().toLowerCase();
+// Accent- and case-insensitive, whitespace-collapsed, so "a tiempo" matches an
+// existing "Á tiempo" and "proximo ano" matches "Próximo año".
+const norm = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ");
 
 export default function AddPage() {
   const [raw, setRaw] = useState("");
@@ -59,6 +67,10 @@ export default function AddPage() {
     rows?.filter((r, i) => flags[i].complete && !flags[i].duplicate) ?? [];
   const incompleteCount = flags.filter((f) => !f.complete && !f.duplicate).length;
   const duplicateCount = flags.filter((f) => f.duplicate).length;
+  const duplicateWords = (rows ?? [])
+    .filter((_, i) => flags[i].duplicate)
+    .map((r) => r.spanish.trim())
+    .filter(Boolean);
 
   async function handleSave() {
     if (readyRows.length === 0) return;
@@ -113,6 +125,19 @@ export default function AddPage() {
           ✨ Parse
         </button>
       </div>
+
+      {rows && duplicateCount > 0 && (
+        <div className="mt-4 rounded-2xl border-2 border-tang/30 bg-tang/10 p-4">
+          <p className="font-800 text-tang" style={bold800}>
+            🔁 Already on your list — {duplicateCount} skipped
+          </p>
+          <p className="mt-1 text-sm font-semibold text-ink/70">
+            These are already in your library (matched ignoring case &amp; accents), so they won&apos;t be
+            added again:{" "}
+            <span className="font-bold text-tang">{duplicateWords.join(", ")}</span>
+          </p>
+        </div>
+      )}
 
       {rows && (
         <div className="mt-6">
