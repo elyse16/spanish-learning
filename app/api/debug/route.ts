@@ -1,55 +1,60 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { supabase, type Direction } from "@/lib/supabase";
 import { getProfileId } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
+const DIRECTIONS: Direction[] = ["es_to_en", "en_to_es"];
 
-// TEMPORARY diagnostic: does every library word have this profile's cards, and
-// are the named words present + due? Remove after diagnosing.
+// TEMPORARY: recompute missing cards, run the insert with error reporting.
 export async function GET() {
   const profileId = getProfileId();
   if (!profileId) {
     return NextResponse.json({ error: "No profile selected" }, { status: 401 });
   }
 
-  const { data: words } = await supabase.from("words").select("id, spanish").limit(5000);
-  const { data: cards } = await supabase
+  const { data: words } = await supabase.from("words").select("id").limit(10000);
+  const { data: existing } = await supabase
     .from("card_progress")
-    .select("word_id, direction, due_at, last_reviewed_at, mastered")
+    .select("word_id, direction")
     .eq("profile_id", profileId)
-    .limit(20000);
+    .limit(50000);
 
-  const dirsByWord = new Map<string, Set<string>>();
-  for (const c of cards ?? []) {
-    const s = dirsByWord.get(c.word_id) ?? new Set<string>();
-    s.add(c.direction);
-    dirsByWord.set(c.word_id, s);
+  const have = new Set((existing ?? []).map((c) => `${c.word_id}:${c.direction}`));
+  const toInsert: { profile_id: string; word_id: string; direction: Direction }[] = [];
+  for (const w of words ?? []) {
+    for (const d of DIRECTIONS) {
+      if (!have.has(`${w.id}:${d}`)) {
+        toInsert.push({ profile_id: profileId, word_id: w.id, direction: d });
+      }
+    }
   }
 
-  const missing = (words ?? []).filter((w) => (dirsByWord.get(w.id)?.size ?? 0) < 2);
+  const before = existing?.length ?? 0;
 
-  const targets = ["Á tiempo", "Proximo ano", "Valer"];
-  const named = targets.map((t) => {
-    const w = (words ?? []).find((x) => x.spanish === t);
-    if (!w) return { spanish: t, found: false };
-    const cs = (cards ?? []).filter((c) => c.word_id === w.id);
-    return {
-      spanish: t,
-      found: true,
-      cards: cs.map((c) => ({
-        direction: c.direction,
-        due: c.due_at,
-        lastReviewed: c.last_reviewed_at,
-        mastered: c.mastered,
-      })),
-    };
+  // Try the upsert exactly as the app does, but capture the error.
+  const upsertRes = await supabase.from("card_progress").upsert(toInsert, {
+    onConflict: "profile_id,word_id,direction",
+    ignoreDuplicates: true,
   });
 
+  // Also try a plain insert as a fallback probe (may conflict — that's fine).
+  let plainErr: string | null = null;
+  if (upsertRes.error) {
+    const plain = await supabase.from("card_progress").insert(toInsert);
+    plainErr = plain.error ? plain.error.message : "plain insert OK";
+  }
+
+  const { count: after } = await supabase
+    .from("card_progress")
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", profileId);
+
   return NextResponse.json({
-    libraryWords: words?.length ?? 0,
-    profileCards: cards?.length ?? 0,
-    wordsMissingCards: missing.length,
-    missingSample: missing.slice(0, 20).map((w) => w.spanish),
-    named,
+    words: words?.length ?? 0,
+    cardsBefore: before,
+    toInsert: toInsert.length,
+    upsertError: upsertRes.error ? upsertRes.error.message : null,
+    plainInsertResult: plainErr,
+    cardsAfter: after ?? 0,
   });
 }
