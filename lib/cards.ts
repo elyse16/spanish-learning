@@ -27,11 +27,10 @@ export async function ensureCardsForProfile(profileId: string): Promise<void> {
     }
   }
 
+  // Insert only the rows we computed as missing. Plain insert (not upsert)
+  // because it doesn't depend on a specific unique constraint existing.
   if (toInsert.length > 0) {
-    await supabase.from("card_progress").upsert(toInsert, {
-      onConflict: "profile_id,word_id,direction",
-      ignoreDuplicates: true,
-    });
+    await supabase.from("card_progress").insert(toInsert);
   }
 }
 
@@ -63,9 +62,6 @@ export async function ensureConjugationCards(profileId: string): Promise<void> {
     card_key: v.key,
   }));
   if (toInsert.length > 0) {
-    await supabase.from("conjugation_progress").upsert(toInsert, {
-      onConflict: "profile_id,card_key",
-      ignoreDuplicates: true,
-    });
+    await supabase.from("conjugation_progress").insert(toInsert);
   }
 }
