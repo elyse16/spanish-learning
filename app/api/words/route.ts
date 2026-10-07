@@ -10,6 +10,10 @@ interface IncomingWord {
   english: string;
 }
 
+// Accent/case-insensitive key for dedup.
+const normKey = (s: string) =>
+  s.trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/\s+/g, " ");
+
 // GET /api/words — the shared library's Spanish words (for duplicate checks).
 export async function GET() {
   const profileId = getProfileId();
@@ -30,12 +34,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No profile selected" }, { status: 401 });
   }
 
-  let body: { words?: IncomingWord[] };
+  // `availableInDays` lets curated batches time-release: their cards become due
+  // N days from now, so pre-loaded words drip into study ~a batch per week.
+  let body: { words?: IncomingWord[]; availableInDays?: number };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+  const availableInDays = Math.max(0, Math.floor(Number(body.availableInDays) || 0));
 
   const clean = (body.words ?? [])
     .map((w) => ({
@@ -52,15 +59,46 @@ export async function POST(req: Request) {
     );
   }
 
+  // Skip words already in the shared library (accent/case-insensitive) and any
+  // repeats within this batch, so curated adds never create duplicates.
+  const { data: existing } = await supabase.from("words").select("spanish").limit(10000);
+  const have = new Set((existing ?? []).map((w) => normKey(w.spanish)));
+  const seen = new Set<string>();
+  const toAdd = clean.filter((w) => {
+    const k = normKey(w.spanish);
+    if (have.has(k) || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  if (toAdd.length === 0) {
+    return NextResponse.json({ inserted: 0, skipped: clean.length });
+  }
+
   // Words go into the shared library. `profile_id` records who added them.
-  const { error: insertErr } = await supabase.from("words").insert(clean);
+  const { data: inserted, error: insertErr } = await supabase
+    .from("words")
+    .insert(toAdd)
+    .select("id");
   if (insertErr) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
-  // Give the adder progress cards for the new words right away; other profiles
-  // pick them up lazily on their next study/dashboard load.
+  // Give the adder progress cards for the new words right away.
   await ensureCardsForProfile(profileId);
 
-  return NextResponse.json({ inserted: clean.length });
+  // Time-release: push these words' due dates out so they surface later.
+  if (availableInDays > 0 && inserted && inserted.length > 0) {
+    const dueAt = new Date(Date.now() + availableInDays * 86400000).toISOString();
+    await supabase
+      .from("card_progress")
+      .update({ due_at: dueAt })
+      .eq("profile_id", profileId)
+      .in(
+        "word_id",
+        inserted.map((w) => w.id)
+      );
+  }
+
+  return NextResponse.json({ inserted: toAdd.length, skipped: clean.length - toAdd.length });
 }
