@@ -39,6 +39,14 @@ function StatusBadge({
 const editInputCls =
   "w-full rounded-lg border-2 border-tang/40 bg-white px-2 py-1.5 outline-none focus:border-tang";
 
+type SortCol = "spanish" | "english" | "es_to_en" | "en_to_es";
+
+function statusRank(s: { mastered: boolean; interval_days: number } | undefined): number {
+  if (!s) return -1; // no card yet
+  if (s.mastered) return 1_000_000;
+  return s.interval_days; // 0 = new, larger = further along
+}
+
 export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) {
   const [rows, setRows] = useState(initialRows);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
@@ -48,6 +56,34 @@ export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) 
   const [editEnglish, setEditEnglish] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [sort, setSort] = useState<{ col: SortCol; dir: "asc" | "desc" } | null>(null);
+
+  function toggleSort(col: SortCol) {
+    setSort((prev) =>
+      prev && prev.col === col
+        ? { col, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { col, dir: "asc" }
+    );
+  }
+
+  const sortedRows = (() => {
+    if (!sort) return rows;
+    const factor = sort.dir === "asc" ? 1 : -1;
+    const copy = [...rows];
+    copy.sort((a, b) => {
+      let cmp = 0;
+      if (sort.col === "spanish") cmp = a.spanish.localeCompare(b.spanish, "es", { sensitivity: "base" });
+      else if (sort.col === "english") cmp = a.english.localeCompare(b.english, "en", { sensitivity: "base" });
+      else cmp = statusRank(a.status[sort.col]) - statusRank(b.status[sort.col]);
+      return cmp * factor;
+    });
+    return copy;
+  })();
+
+  function arrow(col: SortCol) {
+    if (!sort || sort.col !== col) return "↕";
+    return sort.dir === "asc" ? "↑" : "↓";
+  }
 
   function startEdit(row: WordRow) {
     setConfirmingId(null);
@@ -123,15 +159,32 @@ export default function WordsTable({ initialRows }: { initialRows: WordRow[] }) 
           <table className="w-full text-sm">
             <thead className="text-left font-800 text-ink/50" style={{ fontWeight: 800 }}>
               <tr className="border-b-2 border-ink/5">
-                <th className="px-4 py-3">Spanish</th>
-                <th className="px-4 py-3">English</th>
-                <th className="px-4 py-3">ES→EN</th>
-                <th className="px-4 py-3">EN→ES</th>
+                {(
+                  [
+                    ["spanish", "Spanish"],
+                    ["english", "English"],
+                    ["es_to_en", "ES→EN"],
+                    ["en_to_es", "EN→ES"],
+                  ] as [SortCol, string][]
+                ).map(([col, label]) => (
+                  <th key={col} className="px-4 py-3">
+                    <button
+                      onClick={() => toggleSort(col)}
+                      className="flex items-center gap-1 font-800 text-ink/50 transition hover:text-ink"
+                      style={{ fontWeight: 800 }}
+                    >
+                      {label}
+                      <span className={sort?.col === col ? "text-tang" : "text-ink/25"}>
+                        {arrow(col)}
+                      </span>
+                    </button>
+                  </th>
+                ))}
                 <th className="w-28 px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {sortedRows.map((r) => {
                 const isEditing = editingId === r.id;
                 const isConfirming = confirmingId === r.id;
                 const isDeleting = deleting.has(r.id);

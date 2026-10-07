@@ -230,7 +230,7 @@ export default async function DashboardPage() {
           <div>
             <div className="text-3xl">🔀</div>
             <div className="mt-2 font-display text-lg font-600" style={{ fontWeight: 600 }}>
-              Conjugations · past tense
+              Conjugations · past · future · imperfect
             </div>
             <div className="mt-3 flex items-baseline gap-2">
               <span className="font-display text-5xl font-700" style={{ fontWeight: 700 }}>

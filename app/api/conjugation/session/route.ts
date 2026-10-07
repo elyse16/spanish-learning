@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getProfileId } from "@/lib/profile";
 import { ensureConjugationCards } from "@/lib/cards";
-import { CONJ_VERB_BY_KEY, FULL_TABLE_AT, type ConjSlot } from "@/lib/conjugation";
+import { CONJ_VERB_BY_KEY, FULL_TABLE_AT, keysForTense, TENSES, type ConjSlot, type TenseId } from "@/lib/conjugation";
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +14,11 @@ export interface ConjSessionVerb {
   verb: string;
   kind: "regular" | "irregular";
   tenseLabel: string;
-  mode: "step" | "table"; // guided one-at-a-time, or full-table check
+  mode: "step" | "table";
   slots: ConjSlot[];
 }
 
-// GET /api/conjugation/session?size=8 — due verbs, freshest first, shuffled
-// within each freshness tier, each tagged with its adaptive mode.
+// GET /api/conjugation/session?tense=preterite&size=8
 export async function GET(req: Request) {
   const profileId = getProfileId();
   if (!profileId) {
@@ -27,6 +26,10 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
+  const tense = (searchParams.get("tense") ?? "preterite") as TenseId;
+  if (!TENSES.some((t) => t.id === tense)) {
+    return NextResponse.json({ error: "Invalid tense" }, { status: 400 });
+  }
   const size = Math.min(
     50,
     Math.max(1, parseInt(searchParams.get("size") ?? String(DEFAULT_SIZE), 10) || DEFAULT_SIZE)
@@ -34,6 +37,7 @@ export async function GET(req: Request) {
 
   await ensureConjugationCards(profileId);
 
+  const tenseKeys = keysForTense(tense);
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from("conjugation_progress")
@@ -47,9 +51,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Least-recently-studied first (never-studied at the front), random tiebreak.
+  // Keep only this tense's due cards; freshest first, random within a tier.
   const pool = [];
   for (const row of data ?? []) {
+    if (!tenseKeys.has(row.card_key)) continue;
     const verb = CONJ_VERB_BY_KEY.get(row.card_key);
     if (!verb) continue;
     pool.push({

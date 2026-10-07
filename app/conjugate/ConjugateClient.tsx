@@ -2,10 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { slotCorrect } from "@/lib/conjugation";
+import { slotCorrect, type TenseId } from "@/lib/conjugation";
 import type { ConjSessionVerb } from "@/app/api/conjugation/session/route";
 
-export default function ConjugateClient() {
+export default function ConjugateClient({
+  tense,
+  tenseLabel,
+}: {
+  tense: TenseId;
+  tenseLabel: string;
+}) {
   const [verbs, setVerbs] = useState<ConjSessionVerb[] | null>(null);
   const [vIdx, setVIdx] = useState(0);
   const [correct, setCorrect] = useState(0);
@@ -22,7 +28,7 @@ export default function ConjugateClient() {
     setLoadError("");
     setVIdx(0);
     setCorrect(0);
-    return fetch("/api/conjugation/session?size=8")
+    return fetch(`/api/conjugation/session?tense=${tense}&size=8`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
@@ -33,7 +39,7 @@ export default function ConjugateClient() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/conjugation/session?size=8")
+    fetch(`/api/conjugation/session?tense=${tense}&size=8`)
       .then((r) => r.json())
       .then((data) => {
         if (!active) return;
@@ -120,13 +126,15 @@ export default function ConjugateClient() {
         <h1 className="mt-3 font-display text-3xl font-700" style={{ fontWeight: 700 }}>
           Nothing due!
         </h1>
-        <p className="mt-2 font-semibold text-ink/60">No verbs are due right now — come back later.</p>
+        <p className="mt-2 font-semibold text-ink/60">
+          No {tenseLabel} verbs are due right now — try another tense.
+        </p>
         <Link
-          href="/"
+          href="/conjugate"
           className="mt-6 inline-block rounded-full bg-grape px-6 py-3 font-800 text-white shadow-pop-sm"
           style={{ fontWeight: 800 }}
         >
-          ← Back to dashboard
+          ← Back to tenses
         </Link>
       </div>
     );
@@ -176,7 +184,9 @@ export default function ConjugateClient() {
   return (
     <div className="animate-pop-in">
       <div className="flex items-center justify-between text-sm font-bold text-ink/50">
-        <span>🔀 Conjugations</span>
+        <Link href="/conjugate" className="transition hover:text-grape">
+          ← {tenseLabel}
+        </Link>
         <span className="flex items-center gap-2">
           <span
             className="rounded-full bg-grape/10 px-3 py-1 text-grape"
