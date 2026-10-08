@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getProfileId } from "@/lib/profile";
-import { ensureCardsForProfile } from "@/lib/cards";
 
 export const dynamic = "force-dynamic";
 
@@ -58,12 +57,15 @@ export async function POST(req: Request) {
     groups?: { spanish: string[]; availableInDays: number }[];
   };
   const groups = body.groups ?? [];
+  const DIRECTIONS = ["es_to_en", "en_to_es"] as const;
 
-  // Make sure every library word (incl. any batch whose cards never got made)
-  // has card_progress rows before we set their due dates.
-  await ensureCardsForProfile(profileId);
-
-  const results: { availableInDays: number; matched: number; updated: number; missing: string[] }[] = [];
+  const results: {
+    availableInDays: number;
+    matched: number;
+    created: number;
+    updated: number;
+    missing: string[];
+  }[] = [];
 
   for (const g of groups) {
     const dueAt = new Date(Date.now() + Math.max(0, g.availableInDays) * 86400000).toISOString();
@@ -75,8 +77,43 @@ export async function POST(req: Request) {
     const missing = g.spanish.filter((s) => !foundSpanish.has(s));
     const ids = (words ?? []).map((w) => w.id);
 
+    let created = 0;
     let updated = 0;
     if (ids.length > 0) {
+      // Which (word_id, direction) cards already exist for this profile?
+      const { data: existing } = await supabase
+        .from("card_progress")
+        .select("word_id, direction")
+        .eq("profile_id", profileId)
+        .in("word_id", ids);
+      const have = new Set((existing ?? []).map((c) => `${c.word_id}:${c.direction}`));
+
+      // Insert any missing cards directly with the right due date (don't rely on
+      // ensureCardsForProfile, whose existing-check can hit the 1000-row cap).
+      const toInsert: {
+        profile_id: string;
+        word_id: string;
+        direction: string;
+        due_at: string;
+      }[] = [];
+      for (const wid of ids) {
+        for (const d of DIRECTIONS) {
+          if (!have.has(`${wid}:${d}`)) {
+            toInsert.push({ profile_id: profileId, word_id: wid, direction: d, due_at: dueAt });
+          }
+        }
+      }
+      if (toInsert.length > 0) {
+        const { data: ins, error: insErr } = await supabase
+          .from("card_progress")
+          .insert(toInsert)
+          .select("id");
+        if (insErr)
+          return NextResponse.json({ error: insErr.message, at: g.availableInDays }, { status: 500 });
+        created = (ins ?? []).length;
+      }
+
+      // Update the already-existing cards to the right due date.
       const { data: upd, error } = await supabase
         .from("card_progress")
         .update({ due_at: dueAt })
@@ -86,7 +123,7 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ error: error.message, at: g.availableInDays }, { status: 500 });
       updated = (upd ?? []).length;
     }
-    results.push({ availableInDays: g.availableInDays, matched: ids.length, updated, missing });
+    results.push({ availableInDays: g.availableInDays, matched: ids.length, created, updated, missing });
   }
 
   return NextResponse.json({ ok: true, now: new Date().toISOString(), results });
