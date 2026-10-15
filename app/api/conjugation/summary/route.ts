@@ -28,6 +28,7 @@ export async function GET() {
 
   type Bucket = { due: number; new: number; learning: number; mastered: number; total: number };
   const byTense: Record<TenseId, Bucket> = {
+    present: { due: 0, new: 0, learning: 0, mastered: 0, total: 0 },
     preterite: { due: 0, new: 0, learning: 0, mastered: 0, total: 0 },
     future: { due: 0, new: 0, learning: 0, mastered: 0, total: 0 },
     imperfect: { due: 0, new: 0, learning: 0, mastered: 0, total: 0 },

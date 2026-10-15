@@ -3,7 +3,7 @@
 // its definition, then conjugate yo → tú → él → nosotros → ellos.
 
 export type Person = "yo" | "tu" | "el" | "nosotros" | "ellos";
-export type TenseId = "preterite" | "future" | "imperfect";
+export type TenseId = "present" | "preterite" | "future" | "imperfect";
 
 export const PERSONS: { key: Person; label: string }[] = [
   { key: "yo", label: "yo" },
@@ -14,12 +14,14 @@ export const PERSONS: { key: Person; label: string }[] = [
 ];
 
 export const TENSES: { id: TenseId; label: string; blurb: string; emoji: string }[] = [
+  { id: "present", label: "Present", blurb: "what happens / is happening now", emoji: "▶️" },
   { id: "preterite", label: "Past (preterite)", blurb: "completed past actions", emoji: "⏮️" },
   { id: "future", label: "Future", blurb: "what will happen", emoji: "⏭️" },
   { id: "imperfect", label: "Imperfect (past)", blurb: "used to / was ___ing", emoji: "🔁" },
 ];
 
 export const TENSE_LABEL: Record<TenseId, string> = {
+  present: "present",
   preterite: "preterite (past)",
   future: "future",
   imperfect: "imperfect (past)",
@@ -67,6 +69,20 @@ const DEFS: Record<string, string[]> = {
   haber: ["to have", "there to be"],
   caber: ["to fit"],
   valer: ["to be worth", "to cost"],
+  pensar: ["to think"],
+  empezar: ["to start", "to begin"],
+  entender: ["to understand"],
+  preferir: ["to prefer"],
+  dormir: ["to sleep"],
+  volver: ["to return", "to come back", "to go back"],
+  encontrar: ["to find", "to meet"],
+  jugar: ["to play"],
+  servir: ["to serve"],
+  seguir: ["to follow", "to continue", "to keep going"],
+  repetir: ["to repeat"],
+  traer: ["to bring"],
+  oir: ["to hear"],
+  conocer: ["to know", "to meet", "to be familiar with"],
 };
 
 // --- Ending tables ---
@@ -74,6 +90,11 @@ const PRETERITE: Record<"ar" | "er" | "ir", Forms> = {
   ar: { yo: "é", tu: "aste", el: "ó", nosotros: "amos", ellos: "aron" },
   er: { yo: "í", tu: "iste", el: "ió", nosotros: "imos", ellos: "ieron" },
   ir: { yo: "í", tu: "iste", el: "ió", nosotros: "imos", ellos: "ieron" },
+};
+const PRESENT: Record<"ar" | "er" | "ir", Forms> = {
+  ar: { yo: "o", tu: "as", el: "a", nosotros: "amos", ellos: "an" },
+  er: { yo: "o", tu: "es", el: "e", nosotros: "emos", ellos: "en" },
+  ir: { yo: "o", tu: "es", el: "e", nosotros: "imos", ellos: "en" },
 };
 const FUTURE_ENDINGS: Forms = { yo: "é", tu: "ás", el: "á", nosotros: "emos", ellos: "án" };
 const IMPERFECT_AR: Forms = { yo: "aba", tu: "abas", el: "aba", nosotros: "ábamos", ellos: "aban" };
@@ -160,7 +181,54 @@ const IMPERFECT_VERBS: ConjVerb[] = [
   makeVerb("ver", "ver", "irregular", "imperfect", { yo: "veía", tu: "veías", el: "veía", nosotros: "veíamos", ellos: "veían" }),
 ];
 
-export const CONJ_VERBS: ConjVerb[] = [...PRETERITE_VERBS, ...FUTURE_VERBS, ...IMPERFECT_VERBS];
+// ---------------- PRESENT ----------------
+const PRESENT_VERBS: ConjVerb[] = [
+  // Regular models
+  makeVerb("hablar", "hablar", "regular", "present", formsFrom("habl", PRESENT.ar)),
+  makeVerb("comer", "comer", "regular", "present", formsFrom("com", PRESENT.er)),
+  makeVerb("vivir", "vivir", "regular", "present", formsFrom("viv", PRESENT.ir)),
+  // Fully irregular
+  makeVerb("ser", "ser", "irregular", "present", { yo: "soy", tu: "eres", el: "es", nosotros: "somos", ellos: "son" }),
+  makeVerb("estar", "estar", "irregular", "present", { yo: "estoy", tu: "estás", el: "está", nosotros: "estamos", ellos: "están" }),
+  makeVerb("ir", "ir", "irregular", "present", { yo: "voy", tu: "vas", el: "va", nosotros: "vamos", ellos: "van" }),
+  makeVerb("dar", "dar", "irregular", "present", { yo: "doy", tu: "das", el: "da", nosotros: "damos", ellos: "dan" }),
+  makeVerb("ver", "ver", "irregular", "present", { yo: "veo", tu: "ves", el: "ve", nosotros: "vemos", ellos: "ven" }),
+  makeVerb("saber", "saber", "irregular", "present", { yo: "sé", tu: "sabes", el: "sabe", nosotros: "sabemos", ellos: "saben" }),
+  makeVerb("haber", "haber", "irregular", "present", { yo: "he", tu: "has", el: "ha", nosotros: "hemos", ellos: "han" }),
+  // "Yo-go" verbs
+  makeVerb("tener", "tener", "irregular", "present", { yo: "tengo", tu: "tienes", el: "tiene", nosotros: "tenemos", ellos: "tienen" }),
+  makeVerb("venir", "venir", "irregular", "present", { yo: "vengo", tu: "vienes", el: "viene", nosotros: "venimos", ellos: "vienen" }),
+  makeVerb("poner", "poner", "irregular", "present", { yo: "pongo", tu: "pones", el: "pone", nosotros: "ponemos", ellos: "ponen" }),
+  makeVerb("salir", "salir", "irregular", "present", { yo: "salgo", tu: "sales", el: "sale", nosotros: "salimos", ellos: "salen" }),
+  makeVerb("hacer", "hacer", "irregular", "present", { yo: "hago", tu: "haces", el: "hace", nosotros: "hacemos", ellos: "hacen" }),
+  makeVerb("decir", "decir", "irregular", "present", { yo: "digo", tu: "dices", el: "dice", nosotros: "decimos", ellos: "dicen" }),
+  // Stem-changers
+  makeVerb("querer", "querer", "irregular", "present", { yo: "quiero", tu: "quieres", el: "quiere", nosotros: "queremos", ellos: "quieren" }),
+  makeVerb("poder", "poder", "irregular", "present", { yo: "puedo", tu: "puedes", el: "puede", nosotros: "podemos", ellos: "pueden" }),
+  makeVerb("pedir", "pedir", "irregular", "present", { yo: "pido", tu: "pides", el: "pide", nosotros: "pedimos", ellos: "piden" }),
+  makeVerb("pensar", "pensar", "irregular", "present", { yo: "pienso", tu: "piensas", el: "piensa", nosotros: "pensamos", ellos: "piensan" }),
+  makeVerb("empezar", "empezar", "irregular", "present", { yo: "empiezo", tu: "empiezas", el: "empieza", nosotros: "empezamos", ellos: "empiezan" }),
+  makeVerb("entender", "entender", "irregular", "present", { yo: "entiendo", tu: "entiendes", el: "entiende", nosotros: "entendemos", ellos: "entienden" }),
+  makeVerb("preferir", "preferir", "irregular", "present", { yo: "prefiero", tu: "prefieres", el: "prefiere", nosotros: "preferimos", ellos: "prefieren" }),
+  makeVerb("dormir", "dormir", "irregular", "present", { yo: "duermo", tu: "duermes", el: "duerme", nosotros: "dormimos", ellos: "duermen" }),
+  makeVerb("volver", "volver", "irregular", "present", { yo: "vuelvo", tu: "vuelves", el: "vuelve", nosotros: "volvemos", ellos: "vuelven" }),
+  makeVerb("encontrar", "encontrar", "irregular", "present", { yo: "encuentro", tu: "encuentras", el: "encuentra", nosotros: "encontramos", ellos: "encuentran" }),
+  makeVerb("jugar", "jugar", "irregular", "present", { yo: "juego", tu: "juegas", el: "juega", nosotros: "jugamos", ellos: "juegan" }),
+  makeVerb("servir", "servir", "irregular", "present", { yo: "sirvo", tu: "sirves", el: "sirve", nosotros: "servimos", ellos: "sirven" }),
+  makeVerb("seguir", "seguir", "irregular", "present", { yo: "sigo", tu: "sigues", el: "sigue", nosotros: "seguimos", ellos: "siguen" }),
+  makeVerb("repetir", "repetir", "irregular", "present", { yo: "repito", tu: "repites", el: "repite", nosotros: "repetimos", ellos: "repiten" }),
+  // Other irregular "yo"
+  makeVerb("traer", "traer", "irregular", "present", { yo: "traigo", tu: "traes", el: "trae", nosotros: "traemos", ellos: "traen" }),
+  makeVerb("oir", "oír", "irregular", "present", { yo: "oigo", tu: "oyes", el: "oye", nosotros: "oímos", ellos: "oyen" }),
+  makeVerb("conocer", "conocer", "irregular", "present", { yo: "conozco", tu: "conoces", el: "conoce", nosotros: "conocemos", ellos: "conocen" }),
+];
+
+export const CONJ_VERBS: ConjVerb[] = [
+  ...PRESENT_VERBS,
+  ...PRETERITE_VERBS,
+  ...FUTURE_VERBS,
+  ...IMPERFECT_VERBS,
+];
 export const CONJ_VERB_BY_KEY = new Map(CONJ_VERBS.map((v) => [v.key, v]));
 
 export function keysForTense(tense: TenseId): Set<string> {

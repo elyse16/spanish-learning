@@ -25,6 +25,7 @@ async function getTenseStats(profileId: string): Promise<Record<TenseId, TenseSt
     .eq("profile_id", profileId);
 
   const stats: Record<TenseId, TenseStat> = {
+    present: { due: 0, mastered: 0, learning: 0, new: 0, total: 0 },
     preterite: { due: 0, mastered: 0, learning: 0, new: 0, total: 0 },
     future: { due: 0, mastered: 0, learning: 0, new: 0, total: 0 },
     imperfect: { due: 0, mastered: 0, learning: 0, new: 0, total: 0 },
