@@ -11,17 +11,26 @@ export async function GET() {
     return NextResponse.json({ error: "No profile selected" }, { status: 401 });
   }
 
-  const { data, error } = await supabase
-    .from("reviews")
-    .select("reviewed_at, got_it, card_id")
-    .eq("profile_id", profileId)
-    .order("reviewed_at", { ascending: true });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // PostgREST caps a single response at 1000 rows, so page through all reviews.
+  // Without this the calendar silently freezes once a profile passes 1000
+  // reviews (it would only ever see the oldest 1000).
+  const PAGE = 1000;
+  type ReviewRow = { reviewed_at: string; got_it: boolean; card_id: string };
+  const rows: ReviewRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("reviews")
+      .select("reviewed_at, got_it, card_id")
+      .eq("profile_id", profileId)
+      .order("reviewed_at", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    const batch = (data ?? []) as ReviewRow[];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
   }
-
-  const rows = data ?? [];
   const byDay = new Map<string, { reviews: number; correct: number }>();
   const cumulativeByDay = new Map<string, number>();
   const seenCards = new Set<string>();
