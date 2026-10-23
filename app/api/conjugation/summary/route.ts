@@ -32,6 +32,7 @@ export async function GET() {
     preterite: { due: 0, new: 0, learning: 0, mastered: 0, total: 0 },
     future: { due: 0, new: 0, learning: 0, mastered: 0, total: 0 },
     imperfect: { due: 0, new: 0, learning: 0, mastered: 0, total: 0 },
+    perfect: { due: 0, new: 0, learning: 0, mastered: 0, total: 0 },
   };
 
   for (const row of data ?? []) {

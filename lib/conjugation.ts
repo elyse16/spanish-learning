@@ -3,7 +3,7 @@
 // its definition, then conjugate yo → tú → él → nosotros → ellos.
 
 export type Person = "yo" | "tu" | "el" | "nosotros" | "ellos";
-export type TenseId = "present" | "preterite" | "future" | "imperfect";
+export type TenseId = "present" | "preterite" | "future" | "imperfect" | "perfect";
 
 export const PERSONS: { key: Person; label: string }[] = [
   { key: "yo", label: "yo" },
@@ -18,6 +18,7 @@ export const TENSES: { id: TenseId; label: string; blurb: string; emoji: string 
   { id: "preterite", label: "Past (preterite)", blurb: "completed past actions", emoji: "⏮️" },
   { id: "future", label: "Future", blurb: "what will happen", emoji: "⏭️" },
   { id: "imperfect", label: "Imperfect (past)", blurb: "used to / was ___ing", emoji: "🔁" },
+  { id: "perfect", label: "Present perfect", blurb: "I have ___ (done something)", emoji: "✅" },
 ];
 
 export const TENSE_LABEL: Record<TenseId, string> = {
@@ -25,6 +26,7 @@ export const TENSE_LABEL: Record<TenseId, string> = {
   preterite: "preterite (past)",
   future: "future",
   imperfect: "imperfect (past)",
+  perfect: "present perfect",
 };
 
 export interface ConjSlot {
@@ -83,6 +85,21 @@ const DEFS: Record<string, string[]> = {
   traer: ["to bring"],
   oir: ["to hear"],
   conocer: ["to know", "to meet", "to be familiar with"],
+  abrir: ["to open"],
+  cubrir: ["to cover"],
+  escribir: ["to write"],
+  morir: ["to die"],
+  romper: ["to break"],
+  resolver: ["to resolve", "to solve"],
+  devolver: ["to return", "to give back"],
+  descubrir: ["to discover"],
+  describir: ["to describe"],
+  imprimir: ["to print"],
+  freir: ["to fry"],
+  satisfacer: ["to satisfy"],
+  componer: ["to compose", "to fix", "to repair"],
+  proponer: ["to propose"],
+  prever: ["to foresee", "to anticipate", "to preview"],
 };
 
 // --- Ending tables ---
@@ -223,11 +240,59 @@ const PRESENT_VERBS: ConjVerb[] = [
   makeVerb("conocer", "conocer", "irregular", "present", { yo: "conozco", tu: "conoces", el: "conoce", nosotros: "conocemos", ellos: "conocen" }),
 ];
 
+// ---------------- PRESENT PERFECT ----------------
+// haber (present) + past participle, e.g. "he hecho". Regular participles:
+// -ar → -ado, -er/-ir → -ido. Irregulars are listed explicitly.
+const HABER_PRESENT: Forms = { yo: "he", tu: "has", el: "ha", nosotros: "hemos", ellos: "han" };
+function perfectForms(participle: string): Forms {
+  return Object.fromEntries(
+    PERSONS.map((p) => [p.key, `${HABER_PRESENT[p.key]} ${participle}`])
+  ) as Forms;
+}
+function perfectVerb(
+  slug: string,
+  verb: string,
+  kind: "regular" | "irregular",
+  participle: string
+): ConjVerb {
+  return makeVerb(slug, verb, kind, "perfect", perfectForms(participle));
+}
+
+const PERFECT_VERBS: ConjVerb[] = [
+  // Regular models
+  perfectVerb("hablar", "hablar", "regular", "hablado"),
+  perfectVerb("comer", "comer", "regular", "comido"),
+  perfectVerb("vivir", "vivir", "regular", "vivido"),
+  // Irregular participles
+  perfectVerb("ir", "ir", "irregular", "ido"),
+  perfectVerb("hacer", "hacer", "irregular", "hecho"),
+  perfectVerb("abrir", "abrir", "irregular", "abierto"),
+  perfectVerb("cubrir", "cubrir", "irregular", "cubierto"),
+  perfectVerb("decir", "decir", "irregular", "dicho"),
+  perfectVerb("escribir", "escribir", "irregular", "escrito"),
+  perfectVerb("morir", "morir", "irregular", "muerto"),
+  perfectVerb("poner", "poner", "irregular", "puesto"),
+  perfectVerb("romper", "romper", "irregular", "roto"),
+  perfectVerb("ver", "ver", "irregular", "visto"),
+  perfectVerb("volver", "volver", "irregular", "vuelto"),
+  perfectVerb("resolver", "resolver", "irregular", "resuelto"),
+  perfectVerb("devolver", "devolver", "irregular", "devuelto"),
+  perfectVerb("descubrir", "descubrir", "irregular", "descubierto"),
+  perfectVerb("describir", "describir", "irregular", "descrito"),
+  perfectVerb("imprimir", "imprimir", "irregular", "impreso"),
+  perfectVerb("freir", "freír", "irregular", "frito"),
+  perfectVerb("satisfacer", "satisfacer", "irregular", "satisfecho"),
+  perfectVerb("componer", "componer", "irregular", "compuesto"),
+  perfectVerb("proponer", "proponer", "irregular", "propuesto"),
+  perfectVerb("prever", "prever", "irregular", "previsto"),
+];
+
 export const CONJ_VERBS: ConjVerb[] = [
   ...PRESENT_VERBS,
   ...PRETERITE_VERBS,
   ...FUTURE_VERBS,
   ...IMPERFECT_VERBS,
+  ...PERFECT_VERBS,
 ];
 export const CONJ_VERB_BY_KEY = new Map(CONJ_VERBS.map((v) => [v.key, v]));
 
