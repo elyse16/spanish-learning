@@ -9,8 +9,9 @@ const DEFAULT_SIZE = 20;
 // Sample the session from the whole due pool (personal decks stay well under
 // this), so recent additions and every theme get a fair random shot.
 const POOL_CAP = 2000;
-// Cap how many never-studied words a single session can introduce, so new
-// vocab eases in instead of flooding out the due reviews that protect memory.
+// How many never-studied words each session reserves slots for. Guaranteed to
+// get in (when that many new words are available), so new vocab keeps flowing
+// even behind a big review backlog; reviews fill the rest of the session.
 const NEW_PER_SESSION = 12;
 
 export interface SessionCard {
@@ -24,9 +25,9 @@ export interface SessionCard {
 }
 
 // GET /api/session?direction=es_to_en&size=20
-// Returns up to `size` due cards (mastered excluded): due reviews first
-// (most-overdue first), then up to NEW_PER_SESSION never-studied words to fill
-// the rest — so reviews are protected and new vocab eases in a little at a time.
+// Returns up to `size` due cards (mastered excluded): reserves up to
+// NEW_PER_SESSION never-studied words so new vocab always flows, then fills the
+// rest with due reviews (most-overdue first). Cards are shuffled together.
 export async function GET(req: Request) {
   const profileId = getProfileId();
   if (!profileId) {
@@ -61,13 +62,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  type Entry = { card: SessionCard; due: number; r: number };
+  type Entry = { card: SessionCard; due: number; r: number; isNew: boolean };
   const reviews: Entry[] = []; // seen before and now due
   const fresh: Entry[] = []; // never studied yet
   for (const row of data ?? []) {
     const word = Array.isArray(row.words) ? row.words[0] : row.words;
     const spanish = word?.spanish ?? "";
     const english = word?.english ?? "";
+    const isNew = !row.last_reviewed_at;
     const entry: Entry = {
       card: {
         card_id: row.id,
@@ -80,21 +82,45 @@ export async function GET(req: Request) {
       },
       due: row.due_at ? Date.parse(row.due_at) : 0,
       r: Math.random(),
+      isNew,
     };
-    (row.last_reviewed_at ? reviews : fresh).push(entry);
+    (isNew ? fresh : reviews).push(entry);
   }
 
-  // Reviews come first and fill as much of the session as they can — these are
-  // the words at risk of being forgotten. Most-overdue first, random tiebreak.
+  // Reviews: most-overdue first (at highest risk of being forgotten).
   reviews.sort((a, b) => a.due - b.due || a.r - b.r);
-  // Then top up with a capped number of never-studied words (random order), so
-  // new vocab is introduced steadily rather than all at once.
+  // New words: random order.
   fresh.sort((a, b) => a.r - b.r);
 
-  const chosen = reviews.slice(0, size);
-  const newSlots = Math.min(NEW_PER_SESSION, size - chosen.length);
-  if (newSlots > 0) chosen.push(...fresh.slice(0, newSlots));
+  // RESERVE slots for new words so they always get in — even when a big backlog
+  // of due reviews would otherwise fill the entire session. Reviews take the
+  // rest of the session. If one side is short, the other tops the session up.
+  const newTarget = Math.min(NEW_PER_SESSION, fresh.length, size);
+  const reviewTarget = Math.min(reviews.length, size - newTarget);
+  const picked: Entry[] = [...fresh.slice(0, newTarget), ...reviews.slice(0, reviewTarget)];
+  if (picked.length < size) {
+    const rest = [...reviews.slice(reviewTarget), ...fresh.slice(newTarget)];
+    picked.push(...rest.slice(0, size - picked.length));
+  }
 
-  const cards = chosen.map((p) => p.card);
+  // Shuffle so new words are sprinkled through the set, not clustered up front.
+  for (let i = picked.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [picked[i], picked[j]] = [picked[j], picked[i]];
+  }
+
+  const cards = picked.map((p) => p.card);
+  if (searchParams.get("meta") === "1") {
+    const newInSession = picked.filter((p) => p.isNew).length;
+    return NextResponse.json({
+      cards,
+      _meta: {
+        dueReviews: reviews.length,
+        dueNew: fresh.length,
+        newInSession,
+        reviewInSession: picked.length - newInSession,
+      },
+    });
+  }
   return NextResponse.json({ cards });
 }
