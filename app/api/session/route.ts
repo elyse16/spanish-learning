@@ -9,6 +9,9 @@ const DEFAULT_SIZE = 20;
 // Sample the session from the whole due pool (personal decks stay well under
 // this), so recent additions and every theme get a fair random shot.
 const POOL_CAP = 2000;
+// Cap how many never-studied words a single session can introduce, so new
+// vocab eases in instead of flooding out the due reviews that protect memory.
+const NEW_PER_SESSION = 12;
 
 export interface SessionCard {
   card_id: string;
@@ -21,9 +24,9 @@ export interface SessionCard {
 }
 
 // GET /api/session?direction=es_to_en&size=20
-// Returns up to `size` cards that are due now (mastered cards excluded).
-// Newly added words are due immediately (due_at defaults to now()), so they
-// mix in with overdue cards, most-overdue first.
+// Returns up to `size` due cards (mastered excluded): due reviews first
+// (most-overdue first), then up to NEW_PER_SESSION never-studied words to fill
+// the rest — so reviews are protected and new vocab eases in a little at a time.
 export async function GET(req: Request) {
   const profileId = getProfileId();
   if (!profileId) {
@@ -44,15 +47,10 @@ export async function GET(req: Request) {
   await ensureCardsForProfile(profileId);
 
   const nowIso = new Date().toISOString();
-  // Pull the whole pool of currently-due cards. We then order by "freshness"
-  // (least-recently-studied first, never-studied at the very front) and shuffle
-  // *within* each freshness tier. This guarantees you cycle through all your
-  // words before any repeats, while still mixing themes and giving recent
-  // additions a fair chance. Cards you just answered have a recent
-  // last_reviewed_at, so they sink to the bottom.
+  // Pull the whole pool of currently-due cards (mastered excluded).
   const { data, error } = await supabase
     .from("card_progress")
-    .select("id, word_id, direction, last_reviewed_at, words!inner(spanish, english)")
+    .select("id, word_id, direction, last_reviewed_at, due_at, words!inner(spanish, english)")
     .eq("profile_id", profileId)
     .eq("direction", direction)
     .eq("mastered", false)
@@ -63,11 +61,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const pool = (data ?? []).map((row) => {
+  type Entry = { card: SessionCard; due: number; r: number };
+  const reviews: Entry[] = []; // seen before and now due
+  const fresh: Entry[] = []; // never studied yet
+  for (const row of data ?? []) {
     const word = Array.isArray(row.words) ? row.words[0] : row.words;
     const spanish = word?.spanish ?? "";
     const english = word?.english ?? "";
-    return {
+    const entry: Entry = {
       card: {
         card_id: row.id,
         word_id: row.word_id,
@@ -76,15 +77,24 @@ export async function GET(req: Request) {
         english,
         prompt: direction === "es_to_en" ? spanish : english,
         answer: direction === "es_to_en" ? english : spanish,
-      } as SessionCard,
-      // never-studied (null) sorts first; then oldest-studied.
-      t: row.last_reviewed_at ? Date.parse(row.last_reviewed_at) : -Infinity,
-      r: Math.random(), // random tiebreak within a freshness tier
+      },
+      due: row.due_at ? Date.parse(row.due_at) : 0,
+      r: Math.random(),
     };
-  });
+    (row.last_reviewed_at ? reviews : fresh).push(entry);
+  }
 
-  pool.sort((a, b) => a.t - b.t || a.r - b.r);
+  // Reviews come first and fill as much of the session as they can — these are
+  // the words at risk of being forgotten. Most-overdue first, random tiebreak.
+  reviews.sort((a, b) => a.due - b.due || a.r - b.r);
+  // Then top up with a capped number of never-studied words (random order), so
+  // new vocab is introduced steadily rather than all at once.
+  fresh.sort((a, b) => a.r - b.r);
 
-  const cards = pool.slice(0, size).map((p) => p.card);
+  const chosen = reviews.slice(0, size);
+  const newSlots = Math.min(NEW_PER_SESSION, size - chosen.length);
+  if (newSlots > 0) chosen.push(...fresh.slice(0, newSlots));
+
+  const cards = chosen.map((p) => p.card);
   return NextResponse.json({ cards });
 }
