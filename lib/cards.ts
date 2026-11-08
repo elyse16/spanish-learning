@@ -3,26 +3,53 @@ import { CONJ_VERBS } from "./conjugation";
 
 const DIRECTIONS: Direction[] = ["es_to_en", "en_to_es"];
 
+// PostgREST caps a single response at 1000 rows. This pages through a query via
+// .range() until a short page comes back, so callers always get every row.
+const PAGE = 1000;
+async function selectAll<T>(
+  query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await query(from, from + PAGE - 1);
+    if (error) throw error;
+    const batch = data ?? [];
+    out.push(...batch);
+    if (batch.length < PAGE) break;
+  }
+  return out;
+}
+
 // The word library is shared across all profiles, but each profile keeps its
 // own spaced-repetition progress. This makes sure the given profile has a
 // card_progress row for every word in the library (both directions).
 // Idempotent — safe to call on every read; new words self-heal into a profile.
 export async function ensureCardsForProfile(profileId: string): Promise<void> {
-  const { data: words } = await supabase.from("words").select("id");
-  if (!words || words.length === 0) return;
+  const words = await selectAll<{ id: string }>((from, to) =>
+    supabase.from("words").select("id").range(from, to)
+  );
+  if (words.length === 0) return;
 
-  const { data: existing } = await supabase
-    .from("card_progress")
-    .select("word_id, direction")
-    .eq("profile_id", profileId);
+  // Page through ALL existing cards. PostgREST caps a response at 1000 rows, so
+  // once a profile has >1000 cards an un-paginated read returns a partial set —
+  // which used to make this both miss new words and re-insert duplicates.
+  const existing = await selectAll<{ word_id: string; direction: Direction }>((from, to) =>
+    supabase
+      .from("card_progress")
+      .select("word_id, direction")
+      .eq("profile_id", profileId)
+      .range(from, to)
+  );
 
-  const have = new Set((existing ?? []).map((c) => `${c.word_id}:${c.direction}`));
+  const have = new Set(existing.map((c) => `${c.word_id}:${c.direction}`));
 
   const toInsert: { profile_id: string; word_id: string; direction: Direction }[] = [];
   for (const w of words) {
     for (const d of DIRECTIONS) {
-      if (!have.has(`${w.id}:${d}`)) {
+      const k = `${w.id}:${d}`;
+      if (!have.has(k)) {
         toInsert.push({ profile_id: profileId, word_id: w.id, direction: d });
+        have.add(k); // guard against duplicate words in the source list
       }
     }
   }
