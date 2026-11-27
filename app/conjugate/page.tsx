@@ -56,7 +56,30 @@ export default async function ConjugatePickerPage() {
       </h1>
       <p className="mt-1 font-semibold text-ink/60">Pick a tense to practice.</p>
 
-      <div className="mt-6 grid gap-4">
+      {/* Context practice — mixes tenses, you pick the right one from the cue. */}
+      <Link
+        href="/conjugate/context"
+        className="group mt-6 block rounded-3xl bg-ink p-6 text-white shadow-pop transition active:translate-y-1 active:shadow-pop-sm"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="font-display text-xl font-600" style={{ fontWeight: 600 }}>
+              🎯 Context practice
+            </div>
+            <div className="mt-1 text-sm font-semibold opacity-80">
+              Mixed tenses — read the situation and pick the right one yourself
+            </div>
+          </div>
+          <div
+            className="shrink-0 rounded-full bg-white/90 px-5 py-2 text-sm font-800 text-ink shadow-pop-sm transition group-hover:-translate-y-0.5"
+            style={{ fontWeight: 800 }}
+          >
+            Start →
+          </div>
+        </div>
+      </Link>
+
+      <div className="mt-4 grid gap-4">
         {TENSES.map((t, i) => {
           const s = stats[t.id];
           return (

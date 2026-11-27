@@ -299,6 +299,15 @@ export const CONJ_VERB_BY_KEY = new Map(CONJ_VERBS.map((v) => [v.key, v]));
 export function keysForTense(tense: TenseId): Set<string> {
   return new Set(CONJ_VERBS.filter((v) => v.tense === tense).map((v) => v.key));
 }
+export function verbsForTense(tense: TenseId): ConjVerb[] {
+  return CONJ_VERBS.filter((v) => v.tense === tense);
+}
+// The conjugated form for one person. slots[0] is the definition; the five
+// person forms follow in PERSONS order.
+export function conjugatedForm(verb: ConjVerb, person: Person): string {
+  const idx = PERSONS.findIndex((p) => p.key === person);
+  return verb.slots[idx + 1]?.answers[0] ?? "";
+}
 export function tenseOfKey(key: string): TenseId | null {
   return CONJ_VERB_BY_KEY.get(key)?.tense ?? null;
 }
